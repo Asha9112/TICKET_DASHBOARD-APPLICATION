@@ -248,6 +248,7 @@
     inset 4px 4px 12px rgba(255, 255, 255, 0.9),
     inset -4px -4px 12px rgba(0, 45, 150, 0.65);
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  flex-wrap: wrap; /* Add this line */
 }
 
 .ticket-counts:hover {
@@ -453,12 +454,12 @@ Hamburger button style
 
 /* Legend OPEN: RED, CLOSED: GREEN */
 .legend-item.open {
-  border-top: 6px solid #f44336;
-  color: #b71c1c;
+  border-top: 6px solid #bd2331;
+  color: #bd2331;
 }
 .count-box.open {
-  color: #d32f2f; /* Red */
-  border-top: 4px solid #f44336;
+  color: #bd2331; /* Red */
+  border-top: 4px solid #bd2331;
 }
 
 .legend-item.closed {
@@ -544,11 +545,11 @@ Hamburger button style
 
 @keyframes blinkRedBox {
   0%, 100% {
-    background: linear-gradient(90deg, #d43838 70%, #fc8282);
+    background: linear-gradient(90deg, #d43838 70%,  #fc2626);
     box-shadow: 0 1.5px 8px #d4383860, 0 2px 12px #fc828230;
   }
   50% {
-    background: linear-gradient(90deg, #fc2626 70%, #fc8282);
+    background: linear-gradient(90deg, #fc2626 70%,  #fc2626);
     box-shadow: 0 2px 16px #d4383880, 0 2px 14px #fc828250;
   }
 }
@@ -560,14 +561,20 @@ Hamburger button style
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 18px;
-  font-size: 18px;
-  height: 40px;
+  padding: 0 0px;
+  font-size: 22px;
+  height: 52px;
   box-shadow: 0 1.5px 8px #d4383860, 0 2px 12px #fc828230;
   margin-left: 8px;
+  
   gap: 8px;
 }
 
+
+.unassigned-box-blink {
+  color: white; /* Green */
+  border-top: 6px solid #bd2331;
+}
 
 /* .spinning-icon {
   animation: spin 1s linear infinite;
@@ -660,7 +667,7 @@ Hamburger button style
 
 .grid-cell .candidate-name {
   color: #f7bfd7;
-  text-shadow: 0 0 17px #ff418c55, 0 1px 16px #19191980;
+  text-shadow: 0 0 17px #dcff4155, 0 1px 16px #19191980;
   font-family: 'Montserrat', 'Poppins', sans-serif;
   font-size: 19px;
   margin-bottom: 8px;
@@ -683,7 +690,7 @@ Hamburger button style
 .grid-cell:hover .count-box {
   background: #1e4489;
   color: #ffb7cc;
-  box-shadow: 0 2px 14px #ff418c90;
+  box-shadow: 0 2px 14px #1228ee90;
 }
 .candidate-name {
   color: white;                /* Pure white */
@@ -732,3 +739,6 @@ Hamburger button style
     transform: rotate(1turn);
   }
 }
+
+
+

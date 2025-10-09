@@ -418,26 +418,26 @@ useEffect(() => {
           <div className="legend-bar" style={{
             display: "flex", gap: 10, flex: filtersVisible ? "initial" : 1, transition: "flex 0.3s ease",
           }}>
-            <div className="legend-item open" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
+            <div className="legend-item open" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
               OPEN <span style={{ fontWeight: 900, marginLeft: 4 }}>{openSum.toString().padStart(3, "0")}</span>
             </div>
             <div className="legend-item hold" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
               HOLD <span style={{ fontWeight: 900, marginLeft: 4 }}>{holdSum.toString().padStart(3, "0")}</span>
             </div>
-            <div className="legend-item inprogress" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
+            <div className="legend-item inprogress" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
               IN PROGRESS <span style={{ fontWeight: 900, marginLeft: 4 }}>{inProgressSum.toString().padStart(3, "0")}</span>
             </div>
-            <div className="legend-item escalated" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
+            <div className="legend-item escalated" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
               ESCALATED <span style={{ fontWeight: 900, marginLeft: 4 }}>{escalatedSum.toString().padStart(3, "0")}</span>
             </div>
             <div className="unassigned-box-blink" style={{
-              flex: 1, textAlign: "center", fontWeight: 900, display: "flex", justifyContent: "center", alignItems: "center", gap: 12,
+              flex: 1, textAlign: "center", fontWeight: 900, display: "flex", justifyContent: "center", alignItems: "center", gap: 10,
             }}>
               UNASSIGNED <span>{globalUnassignedSum.toString().padStart(3, "0")}</span>
               {rows.length > 0 && (
                 <span
                   style={{
-                    padding: "6px 20px",
+                    padding: "19px 20px",
                     backgroundColor:
                       currentTicketNumber ===
                       rows.find((r) => r.latestUnassignedTicketId)?.latestUnassignedTicketId
@@ -454,7 +454,7 @@ useEffect(() => {
                       rows.find((r) => r.latestUnassignedTicketId)?.latestUnassignedTicketId
                         ? 900
                         : 700,
-                    fontSize: 25,
+                    fontSize: 20,
                     userSelect: "none",
                     display: "inline-block",
                     verticalAlign: "middle",
@@ -466,8 +466,8 @@ useEffect(() => {
             </div>
             {showLegendTotal && (
               <div className="legend-item total" style={{
-                backgroundColor: "#ffd700", color: "#34495e", fontWeight: 700, borderRadius: 12,
-                padding: "0 10px", flex: 1, textAlign: "center", fontSize: 22,
+                backgroundColor: "#ffd700", color: "#f7fafcff", fontWeight: 700, borderRadius: 12,
+                padding: "0 10px", flex: 1, textAlign: "center", fontSize: 20,
               }}>
                 TOTAL <span>
                   {(
