@@ -14,7 +14,7 @@ app.use(cors());
 app.use((req, res, next) => {
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 http://192.168.3.8:5000"
+    "default-src 'self'; connect-src 'self' http://192.168.3.8:5000 http://192.168.3.8:86 http://192.168.3.8:85"
   );
   next();
 });

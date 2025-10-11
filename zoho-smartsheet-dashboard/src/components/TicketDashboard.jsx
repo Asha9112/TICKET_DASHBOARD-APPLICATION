@@ -10,7 +10,8 @@ const ESCALATED_STATUS_COL_ID = 1004;
 const UNASSIGNED_STATUS_COL_ID = 1005;
 const IN_PROGRESS_STATUS_COL_ID = 1006;
 
-const backendurl = "http://localhost:5000";
+// const backendurl = "http://192.168.3.8:86";
+const backendurl = "https://ticket-backend-code.onrender.com"
 const CANDIDATES_PER_PAGE = 15;
 
 const Option = (props) => (
@@ -134,35 +135,33 @@ function TicketDashboard() {
     }
   }
 
-useEffect(() => {
-  // Restore previous rows instantly
-  const savedRows = localStorage.getItem("ticketDashboardRows");
-  if (savedRows) {
-    setRows(JSON.parse(savedRows));
-  }
-  // Restore previous unassigned ticket numbers instantly
-  const savedTicketNumbers = localStorage.getItem("ticketDashboardUnassignedNumbers");
-  if (savedTicketNumbers) {
-    const numbers = JSON.parse(savedTicketNumbers);
-    setUnassignedTicketNumbers(numbers);
-    if (numbers.length > 0) {
-      setCurrentUnassignedIndex(0); // show first ticket instantly
+  useEffect(() => {
+    // Restore previous rows instantly
+    const savedRows = localStorage.getItem("ticketDashboardRows");
+    if (savedRows) {
+      setRows(JSON.parse(savedRows));
     }
-  }
+    // Restore previous unassigned ticket numbers instantly
+    const savedTicketNumbers = localStorage.getItem("ticketDashboardUnassignedNumbers");
+    if (savedTicketNumbers) {
+      const numbers = JSON.parse(savedTicketNumbers);
+      setUnassignedTicketNumbers(numbers);
+      if (numbers.length > 0) {
+        setCurrentUnassignedIndex(0); // show first ticket instantly
+      }
+    }
 
-  if (!hasFetchedRef.current) {
-    refreshData();
-    hasFetchedRef.current = true;
-  }
-  const dataInterval = setInterval(() => { refreshData(); }, 300000);
-  const reloadInterval = setInterval(() => { window.location.reload(); }, 300000);
-  return () => {
-    clearInterval(dataInterval);
-    clearInterval(reloadInterval);
-  };
-}, []);
-
-
+    if (!hasFetchedRef.current) {
+      refreshData();
+      hasFetchedRef.current = true;
+    }
+    const dataInterval = setInterval(() => { refreshData(); }, 300000);
+    const reloadInterval = setInterval(() => { window.location.reload(); }, 300000);
+    return () => {
+      clearInterval(dataInterval);
+      clearInterval(reloadInterval);
+    };
+  }, []);
 
   useEffect(() => {
     let total = 0;
@@ -393,250 +392,240 @@ useEffect(() => {
       : "";
 
   return (
-    <>
-      <div className="dashboard-header-main" style={{ maxWidth: 1300, margin: "0 auto 30px auto", position: "relative" }}>
-        <div className="dashboard-header-top" style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative",
+    <div className="dashboard-header-main" style={{ maxWidth: 1300, margin: "0 auto 30px auto", position: "relative" }}>
+      <div className="dashboard-header-top" style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative",
+      }}>
+        <img className="header-image" src="/suprajit_logo_BG.png" alt="Left icon" style={{ height: 80, width: "auto" }} />
+        <div className="dashboard-title-container" style={{
+          fontWeight: 900, fontSize: 60, letterSpacing: 2, color: "#e0eaff",
+          textShadow: "2px 2px 6px rgba(0, 0, 50, 0.7)",
+          userSelect: "none", textTransform: "uppercase", position: "relative", zIndex: 2,
         }}>
-          <img className="header-image" src="/suprajit_logo_BG.png" alt="Left icon" style={{ height: 80, width: "auto" }} />
-          <div className="dashboard-title-container" style={{
-            fontWeight: 900, fontSize: 60, letterSpacing: 2, color: "#e0eaff",
-            textShadow: "2px 2px 6px rgba(0, 0, 50, 0.7)",
-            userSelect: "none", textTransform: "uppercase", position: "relative", zIndex: 2,
-          }}>
-            TICKET DASHBOARD
-          </div>
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, position: "relative", zIndex: 2,
-          }}>
-            <img className="header-image" src="/IT-LOGO.png" alt="Right icon" style={{ height: 70, width: "auto" }} />
-          </div>
+          TICKET DASHBOARD
         </div>
-        <div className="dashboard-header-filters" style={{
-          maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, position: "relative", zIndex: 2,
         }}>
-          <div className="legend-bar" style={{
-            display: "flex", gap: 10, flex: filtersVisible ? "initial" : 1, transition: "flex 0.3s ease",
-          }}>
-            <div className="legend-item open" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
-              OPEN <span style={{ fontWeight: 900, marginLeft: 4 }}>{openSum.toString().padStart(3, "0")}</span>
-            </div>
-            <div className="legend-item hold" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
-              HOLD <span style={{ fontWeight: 900, marginLeft: 4 }}>{holdSum.toString().padStart(3, "0")}</span>
-            </div>
-            <div className="legend-item inprogress" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
-              IN PROGRESS <span style={{ fontWeight: 900, marginLeft: 4 }}>{inProgressSum.toString().padStart(3, "0")}</span>
-            </div>
-            <div className="legend-item escalated" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
-              ESCALATED <span style={{ fontWeight: 900, marginLeft: 4 }}>{escalatedSum.toString().padStart(3, "0")}</span>
-            </div>
-            <div className="unassigned-box-blink" style={{
-              flex: 1, textAlign: "center", fontWeight: 900, display: "flex", justifyContent: "center", alignItems: "center", gap: 10,
-            }}>
-              UNASSIGNED <span>{globalUnassignedSum.toString().padStart(3, "0")}</span>
-              {rows.length > 0 && (
-                <span
-                  style={{
-                    padding: "19px 20px",
-                    backgroundColor:
-                      currentTicketNumber ===
-                      rows.find((r) => r.latestUnassignedTicketId)?.latestUnassignedTicketId
-                        ? "#1e4489"
-                        : "#1e4489",
-                    borderRadius: 16,
-                    color:
-                      currentTicketNumber ===
-                      rows.find((r) => r.latestUnassignedTicketId)?.latestUnassignedTicketId
-                        ? "#f5f7f8ff"
-                        : "#fff",
-                    fontWeight:
-                      currentTicketNumber ===
-                      rows.find((r) => r.latestUnassignedTicketId)?.latestUnassignedTicketId
-                        ? 900
-                        : 700,
-                    fontSize: 20,
-                    userSelect: "none",
-                    display: "inline-block",
-                    verticalAlign: "middle",
-                  }}
-                >
-                  {currentTicketNumber}
-                </span>
-              )}
-            </div>
-            {showLegendTotal && (
-              <div className="legend-item total" style={{
-                backgroundColor: "#ffd700", color: "#f7fafcff", fontWeight: 700, borderRadius: 12,
-                padding: "0 10px", flex: 1, textAlign: "center", fontSize: 20,
-              }}>
-                TOTAL <span>
-                  {(
-                    (selectedStatusKeys.includes("open") ? openSum : 0) +
-                    (selectedStatusKeys.includes("hold") ? holdSum : 0) +
-                    (selectedStatusKeys.includes("inProgress") ? inProgressSum : 0) +
-                    (selectedStatusKeys.includes("escalated") ? escalatedSum : 0) +
-                    (selectedStatusKeys.includes("unassigned") ? globalUnassignedSum : 0)
-                  ).toString().padStart(3, "0")}
-                </span>
-              </div>
-            )}
-          </div>
-          <button
-            className="hamburger-btn"
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 10,
-              border: "none",
-              cursor: "pointer",
-              marginLeft: 20,
-              display: "block",
-            }}
-            onClick={() => setFiltersVisible((v) => !v)}
-            aria-label="Toggle filters"
-          >
-            <FaBars size={18} color="#34495e" />
-          </button>
-
-          {filtersVisible && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ minWidth: 210 }}>
-                <Select
-                  closeMenuOnSelect={false}
-                  hideSelectedOptions={false}
-                  components={{ Option }}
-                  isMulti
-                  options={candidateOptions}
-                  value={selectedCandidates}
-                  onChange={setSelectedCandidates}
-                  placeholder="Search agents"
-                  styles={selectStyles}
-                  menuPortalTarget={document.body}
-                  filterOption={personFilterOption}
-                  isSearchable
-                  menuPlacement="auto"
-                  maxMenuHeight={240}
-                />
-              </div>
-              <div style={{ minWidth: 210 }}>
-                <Select
-                  closeMenuOnSelect={false}
-                  hideSelectedOptions={false}
-                  components={{ Option }}
-                  isMulti
-                  options={statusOptions}
-                  value={selectedStatuses}
-                  onChange={setSelectedStatuses}
-                  placeholder="Select statuses"
-                  styles={selectStyles}
-                  menuPortalTarget={document.body}
-                />
-              </div>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                style={{ height: 40, width: 40, borderRadius: 10 }}
-              >
-                <option value="asc">Asc</option>
-                <option value="desc">Desc</option>
-              </select>
-            </div>
-          )}
-        </div>
-
-        {loading && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-              <FaSpinner className="spinning-icon" />
-          </div>
-        )}
-
-      <div
-  className="grid-container"
-  style={{
-    marginTop: 30,
-    display: "grid",
-    gap: "18px",
-    gridTemplateColumns: "repeat(5, 1fr)",   // 5 columns
-    gridTemplateRows: "repeat(3, auto)",     // 3 rows
-    maxWidth: 1300,                          // Optional: reduce maxWidth for better fit
-  }}
->
-          {gridCells}
-        </div>
-
-        <div
-          className="pagination-container"
-          style={{ marginTop: 20, textAlign: "center" }}
-        >
-          <button
-            style={{
-              backgroundColor: "transparent",
-              border: "none",
-              fontSize: 24,
-              cursor: "pointer",
-              userSelect: "none",
-              padding: "0 8px",
-              color: "#fff",
-            }}
-            onClick={() =>
-              setCurrentPage((p) =>
-                p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)
-              )
-            }
-            aria-label="Previous page"
-          >
-            {"<"}
-          </button>
-
-          {[...Array(Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)).keys()].map(
-            (i) => (
-              <span
-                key={i}
-                onClick={() => setCurrentPage(i + 1)}
-                style={{
-                  display: "inline-block",
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  margin: "0 8px",
-                  backgroundColor: currentPage === i + 1 ? "#007bff" : "#ccc",
-                  cursor: "pointer",
-                  userSelect: "none",
-                  border: "none",
-                  boxSizing: "border-box",
-                }}
-                aria-label={`Page ${i + 1}`}
-                role="button"
-                tabIndex={0}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") setCurrentPage(i + 1);
-                }}
-              />
-            )
-          )}
-
-          <button
-            style={{
-              backgroundColor: "transparent",
-              border: "none",
-              fontSize: 24,
-              cursor: "pointer",
-              userSelect: "none",
-              padding: "0 8px",
-              color: "#fff",
-            }}
-            onClick={() =>
-              setCurrentPage((p) =>
-                p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1
-              )
-            }
-            aria-label="Next page"
-          >
-            {">"}
-          </button>
+          <img className="header-image" src="/IT-LOGO.png" alt="Right icon" style={{ height: 70, width: "auto" }} />
         </div>
       </div>
-    </>
+      <div className="dashboard-header-filters" style={{
+        maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+      }}>
+        <div className="legend-bar" style={{
+          display: "flex", gap: 10, flex: filtersVisible ? "initial" : 1, transition: "flex 0.3s ease",
+        }}>
+          <div className="legend-item open" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
+            OPEN <span style={{ fontWeight: 900, marginLeft: 4 }}>{openSum.toString().padStart(3, "0")}</span>
+          </div>
+          <div className="legend-item hold" style={{ flex: 1, textAlign: "center", fontSize: 22, fontWeight: 900 }}>
+            HOLD <span style={{ fontWeight: 900, marginLeft: 4 }}>{holdSum.toString().padStart(3, "0")}</span>
+          </div>
+          <div className="legend-item inprogress" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
+            IN PROGRESS <span style={{ fontWeight: 900, marginLeft: 4 }}>{inProgressSum.toString().padStart(3, "0")}</span>
+          </div>
+          <div className="legend-item escalated" style={{ flex: 1, textAlign: "center", fontSize: 20, fontWeight: 900 }}>
+            ESCALATED <span style={{ fontWeight: 900, marginLeft: 4 }}>{escalatedSum.toString().padStart(3, "0")}</span>
+          </div>
+          <div className="unassigned-box-blink" style={{
+            flex: 1, textAlign: "center", fontWeight: 900, display: "flex", justifyContent: "center", alignItems: "center", gap: 10,
+            paddingLeft: 24,
+            paddingRight: 0,
+          }}>
+            UNASSIGNED <span>{globalUnassignedSum.toString().padStart(3, "0")}</span>
+            {rows.length > 0 && (
+              <span style={{
+                padding: "11px 11px",
+                backgroundColor: "#1e4489",
+                borderRadius: 16,
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 22,
+                userSelect: "none",
+                display: "inline-block",
+                verticalAlign: "middle",
+              }}>
+                {currentTicketNumber}
+              </span>
+            )}
+          </div>
+
+          {showLegendTotal && (
+            <div className="legend-item total" style={{
+              backgroundColor: "#ffd700", color: "#f7fafcff", fontWeight: 700, borderRadius: 12,
+              padding: "0 10px", flex: 1, textAlign: "center", fontSize: 20,
+            }}>
+              TOTAL <span>
+                {(
+                  (selectedStatusKeys.includes("open") ? openSum : 0) +
+                  (selectedStatusKeys.includes("hold") ? holdSum : 0) +
+                  (selectedStatusKeys.includes("inProgress") ? inProgressSum : 0) +
+                  (selectedStatusKeys.includes("escalated") ? escalatedSum : 0) +
+                  (selectedStatusKeys.includes("unassigned") ? globalUnassignedSum : 0)
+                )
+                  .toString()
+                  .padStart(3, "0")}
+              </span>
+            </div>
+          )}
+        </div>
+        <button
+          className="hamburger-btn"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 10,
+            border: "none",
+            cursor: "pointer",
+            marginLeft: 20,
+            display: "block",
+          }}
+          onClick={() => setFiltersVisible((v) => !v)}
+          aria-label="Toggle filters"
+        >
+          <FaBars size={18} color="#34495e" />
+        </button>
+
+        {filtersVisible && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ minWidth: 210 }}>
+              <Select
+                closeMenuOnSelect={false}
+                hideSelectedOptions={false}
+                components={{ Option }}
+                isMulti
+                options={candidateOptions}
+                value={selectedCandidates}
+                onChange={setSelectedCandidates}
+                placeholder="Search agents"
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+                filterOption={personFilterOption}
+                isSearchable
+                menuPlacement="auto"
+                maxMenuHeight={240}
+              />
+            </div>
+            <div style={{ minWidth: 210 }}>
+              <Select
+                closeMenuOnSelect={false}
+                hideSelectedOptions={false}
+                components={{ Option }}
+                isMulti
+                options={statusOptions}
+                value={selectedStatuses}
+                onChange={setSelectedStatuses}
+                placeholder="Select statuses"
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+              />
+            </div>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              style={{ height: 40, width: 40, borderRadius: 10 }}
+            >
+              <option value="asc">Asc</option>
+              <option value="desc">Desc</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Uncomment if loading spinner is desired */}
+      {/* {loading && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+          <FaSpinner className="spinning-icon" />
+        </div>
+      )} */}
+
+      <div
+        className="grid-container"
+        style={{
+          marginTop: 30,
+          display: "grid",
+          gap: "18px",
+          gridTemplateColumns: "repeat(5, 1fr)", // 5 columns
+          gridTemplateRows: "repeat(3, auto)",   // 3 rows
+          maxWidth: 1300,                       // Optional: reduce maxWidth for better fit
+        }}
+      >
+        {gridCells}
+      </div>
+
+      <div
+        className="pagination-container"
+        style={{ marginTop: 20, textAlign: "center" }}
+      >
+        {/* <button
+          style={{
+            backgroundColor: "transparent",
+            border: "none",
+            fontSize: 24,
+            cursor: "pointer",
+            userSelect: "none",
+            padding: "0 8px",
+            color: "#fff",
+          }}
+          onClick={() =>
+            setCurrentPage((p) =>
+              p > 1 ? p - 1 : Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)
+            )
+          }
+          aria-label="Previous page"
+        >
+          {"<"}
+        </button> */}
+{/* 
+        {[...Array(Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE)).keys()].map(
+          (i) => (
+            <span
+              key={i}
+              onClick={() => setCurrentPage(i + 1)}
+              style={{
+                display: "inline-block",
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                margin: "0 8px",
+                backgroundColor: currentPage === i + 1 ? "#007bff" : "#ccc",
+                cursor: "pointer",
+                userSelect: "none",
+                border: "none",
+                boxSizing: "border-box",
+              }}
+              aria-label={`Page ${i + 1}`}
+              role="button"
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") setCurrentPage(i + 1);
+              }} */}
+            {/* />
+          )
+        )} */}
+
+        {/* <button
+          style={{
+            backgroundColor: "transparent",
+            border: "none",
+            fontSize: 24,
+            cursor: "pointer",
+            userSelect: "none",
+            padding: "0 8px",
+            color: "#fff",
+          }} */}
+          {/* onClick={() =>
+            setCurrentPage((p) =>
+              p < Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE) ? p + 1 : 1
+            )
+          }
+          aria-label="Next page"
+        >
+          {">"}
+        </button> */}
+      </div>
+    </div>
   );
 }
 

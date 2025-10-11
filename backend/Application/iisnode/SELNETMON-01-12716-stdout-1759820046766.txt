@@ -1,1 +1,0 @@
-Backend server running on port \\.\pipe\271f774f-998e-4b92-bb87-fe7cecbbb812

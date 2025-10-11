@@ -1,0 +1,27 @@
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched users count: 50
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched users count: 50
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched users count: 50
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched tickets count: 3746
+Fetched users count: 50
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched users count: 50
+Fetched users count: 50
+Fetched tickets count: 3746
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Received request for /api/zoho-assignees-with-ticket-counts
+Access token obtained
+Fetched users count: 50
+Fetched users count: 50
+Fetched tickets count: 3746
