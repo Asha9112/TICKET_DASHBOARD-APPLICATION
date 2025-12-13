@@ -93,7 +93,7 @@ export default function AgentTicketAgeTable({
     { key: "departmentName", label: "Department" },
     { key: "createdTime", label: "Ticket Created (IST)" },
     { key: "firstResponseTime", label: "First Response Time" },
-    { key: "resolutionTime", label: "Resolution Time" },
+    // { key: "resolutionTime", label: "Resolution Time" },
     { key: "threadCount", label: "Threads" },
     { key: "responseCount", label: "User Response" },
     { key: "outgoingCount", label: "Agent Response" },
