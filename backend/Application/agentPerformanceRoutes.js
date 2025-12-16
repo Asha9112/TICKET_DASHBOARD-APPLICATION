@@ -1,13 +1,17 @@
 // backend/Application/agentPerformanceRoutes.js
 
-// Small helper: parse Zoho duration strings like "20 days 04:40 hrs"
-// into total hours as a number.
+// =====================
+// Helpers
+// =====================
+
+// Parse Zoho duration strings like:
+// "20 days 04:40 hrs", "04:40 hrs", "5 hrs"
 function parseZohoDurationToHours(str) {
   if (!str || typeof str !== "string") return 0;
 
   const s = str.trim().toLowerCase();
 
-  // pattern 1: "20 days 04:40 hrs"
+  // "20 days 04:40 hrs"
   let m = s.match(/(\d+)\s*days?\s+(\d{1,2}):(\d{2})\s*hrs?/);
   if (m) {
     const days = parseInt(m[1], 10) || 0;
@@ -16,7 +20,7 @@ function parseZohoDurationToHours(str) {
     return days * 24 + hours + minutes / 60;
   }
 
-  // pattern 2: "04:40 hrs"
+  // "04:40 hrs"
   m = s.match(/(\d{1,2}):(\d{2})\s*hrs?/);
   if (m) {
     const hours = parseInt(m[1], 10) || 0;
@@ -24,7 +28,7 @@ function parseZohoDurationToHours(str) {
     return hours + minutes / 60;
   }
 
-  // pattern 3: plain number in hours, e.g. "5" or "5 hrs"
+  // "5" or "5 hrs"
   m = s.match(/(\d+(\.\d+)?)/);
   if (m) {
     return parseFloat(m[1]) || 0;
@@ -33,24 +37,10 @@ function parseZohoDurationToHours(str) {
   return 0;
 }
 
-// Helper: check if ticket is in date range
-function isTicketInRange(ticket, fromDateObj, toDateObj) {
-  if (!fromDateObj && !toDateObj) return true;
+// =====================
+// Route Registration
+// =====================
 
-  const created = ticket.createdTime ? new Date(ticket.createdTime) : null;
-  const closed = ticket.closedTime ? new Date(ticket.closedTime) : null;
-
-  // Use closedTime if present, else createdTime
-  const ref = closed || created;
-  if (!ref || Number.isNaN(ref.getTime())) return false;
-
-  if (fromDateObj && ref < fromDateObj) return false;
-  if (toDateObj && ref > toDateObj) return false;
-
-  return true;
-}
-
-// Main registration function
 function registerAgentPerformanceRoutes(app, helpers) {
   const {
     getAccessToken,
@@ -60,7 +50,10 @@ function registerAgentPerformanceRoutes(app, helpers) {
     departmentList,
   } = helpers;
 
-  // NEW: Agent Performance (custom) endpoint
+  /**
+   * AGENT PERFORMANCE ENDPOINT
+   * Accurate for date ranges and averages
+   */
   app.get("/api/agent-performance", async (req, res) => {
     try {
       const { fromDate, toDate, departmentId, agentId } = req.query;
@@ -70,17 +63,23 @@ function registerAgentPerformanceRoutes(app, helpers) {
 
       const accessToken = await getAccessToken();
 
-      // 1) Active tickets (open/hold/inProgress/escalated/closed)
+      // =====================
+      // 1) Fetch ACTIVE tickets
+      // =====================
       const deptIds =
         departmentId && departmentId !== "all" ? [departmentId] : [];
+
       const activeTickets = await fetchAllTickets(
         accessToken,
         deptIds,
         agentId || null
       );
 
-      // 2) Archived tickets (per department)
+      // =====================
+      // 2) Fetch ARCHIVED tickets
+      // =====================
       let archivedTickets = [];
+
       const departmentsToUse =
         departmentId && departmentId !== "all"
           ? departmentList.filter((d) => d.id === departmentId)
@@ -91,219 +90,154 @@ function registerAgentPerformanceRoutes(app, helpers) {
         archivedTickets = archivedTickets.concat(batch || []);
       }
 
-      // 3) Normalize + filter by agent/date
+      // =====================
+      // 3) Merge tickets
+      // =====================
       let allTickets = activeTickets.concat(archivedTickets);
 
+      // Agent filter
       if (agentId && agentId !== "all") {
         allTickets = allTickets.filter(
           (t) => String(t.assigneeId || "") === String(agentId)
         );
       }
 
+      // =====================
+      // 4) Date filter (Zoho-style)
+      // Include if created OR closed is in range
+      // =====================
       if (fromDateObj || toDateObj) {
-        allTickets = allTickets.filter((t) =>
-          isTicketInRange(t, fromDateObj, toDateObj)
-        );
+        allTickets = allTickets.filter((t) => {
+          const created = t.createdTime ? new Date(t.createdTime) : null;
+          const closed = t.closedTime ? new Date(t.closedTime) : null;
+
+          const inCreatedRange =
+            created &&
+            (!fromDateObj || created >= fromDateObj) &&
+            (!toDateObj || created <= toDateObj);
+
+          const inClosedRange =
+            closed &&
+            (!fromDateObj || closed >= fromDateObj) &&
+            (!toDateObj || closed <= toDateObj);
+
+          return inCreatedRange || inClosedRange;
+        });
       }
 
       if (!allTickets.length) {
-        return res.json({ summary: {}, agents: [] });
+        return res.json({ agents: [] });
       }
 
-      // 4) Fetch metrics for these tickets
+      // =====================
+      // 5) Build ticket status map (SOURCE OF TRUTH)
+      // =====================
+      const ticketStatusMap = {};
+      allTickets.forEach((t) => {
+        const key = String(t.ticketNumber || t.id || "");
+        if (!key) return;
+        ticketStatusMap[key] = (t.status || "").toLowerCase();
+      });
+
+      // =====================
+      // 6) Fetch metrics
+      // =====================
       const metricRows = await fetchTicketMetricsForTickets(
         accessToken,
         allTickets
       );
 
-      // Build quick lookup: ticketId -> status/assignee for aggregation
-      const ticketMetaMap = {};
-      allTickets.forEach((t) => {
-        const key = String(t.id || t.ticketNumber || "");
-        if (!key) return;
-        ticketMetaMap[key] = {
-          status: (t.status || "").toLowerCase(),
-          assigneeId: t.assigneeId || "",
-          assigneeName:
-            (t.assignee && t.assignee.displayName) ||
-            t.assigneeName ||
-            "",
-        };
-      });
-
-      // sets of "resolved" and "pending" statuses
-      const resolvedStatusSet = new Set(["closed", "resolved", "archived"]);
-      const pendingStatusSet = new Set([
-        "open",
-        "hold",
-        "inprogress",
-        "in progress",
-        "escalated",
-      ]);
-
-      // 5) Group metrics by agent
+      // =====================
+      // 7) Aggregate per agent
+      // =====================
       const agentsMap = {};
-      metricRows.forEach((row) => {
-        const ticketKey = String(row.ticketNumber || row.id || "");
-        const meta = ticketMetaMap[ticketKey] || {};
 
-        const rawStatus = meta.status || (row.status || "").toLowerCase();
-        const status = rawStatus.trim();
-        const agentName =
-          row.agentName ||
-          meta.assigneeName ||
-          "Unassigned";
+      metricRows.forEach((row) => {
+        const agentName = row.agentName || "Unassigned";
+        const ticketId = String(row.ticketNumber || row.id || "");
+        if (!ticketId) return;
 
         if (!agentsMap[agentName]) {
           agentsMap[agentName] = {
             agentName,
-            // track unique ticket assignment
             ticketIds: new Set(),
-            resolvedTicketIds: new Set(),
-            pendingTicketIds: new Set(),
+            resolvedIds: new Set(),
+            pendingIds: new Set(),
 
             totalResolutionHours: 0,
+            resolutionCount: 0,
+
             totalFirstResponseHours: 0,
+            firstResponseCount: 0,
+
             totalThreads: 0,
-
-            escalatedCount: 0,
-            singleTouchCount: 0,
-
-            // optional satisfaction
-            satisfactionSum: 0,
-            satisfactionCount: 0,
+            threadCount: 0,
           };
         }
 
         const bucket = agentsMap[agentName];
+        bucket.ticketIds.add(ticketId);
 
-        if (ticketKey) {
-          bucket.ticketIds.add(ticketKey);
+        const status = ticketStatusMap[ticketId] || "";
 
-          if (resolvedStatusSet.has(status)) {
-            bucket.resolvedTicketIds.add(ticketKey);
-          } else if (pendingStatusSet.has(status)) {
-            bucket.pendingTicketIds.add(ticketKey);
-          }
+        if (status === "closed" || status === "resolved") {
+          bucket.resolvedIds.add(ticketId);
+        } else {
+          bucket.pendingIds.add(ticketId);
         }
 
-        // Convert Zoho durations to hours
+        // Resolution time
         const resHrs = parseZohoDurationToHours(row.resolutionTime);
-        bucket.totalResolutionHours += resHrs;
-
-        const firstResHrs = parseZohoDurationToHours(row.firstResponseTime);
-        bucket.totalFirstResponseHours += firstResHrs;
-
-        // Threads / responses
-        const threadCount = Number(row.threadCount || row.responseCount || 0);
-        bucket.totalThreads += threadCount;
-
-        // Escalated
-        if (status === "escalated") {
-          bucket.escalatedCount += 1;
+        if (resHrs > 0) {
+          bucket.totalResolutionHours += resHrs;
+          bucket.resolutionCount += 1;
         }
 
-        // Single touch: 1 agent response / 1 thread
-        if (threadCount === 1) {
-          bucket.singleTouchCount += 1;
+        // First response time
+        const frHrs = parseZohoDurationToHours(row.firstResponseTime);
+        if (frHrs > 0) {
+          bucket.totalFirstResponseHours += frHrs;
+          bucket.firstResponseCount += 1;
         }
 
-        // Satisfaction (if you later add a rating field to metrics)
-        // const rating = Number(row.satisfactionRating || 0);
-        // if (!Number.isNaN(rating) && rating > 0) {
-        //   bucket.satisfactionSum += rating;
-        //   bucket.satisfactionCount += 1;
-        // }
+        // Threads
+        const threads = Number(row.threadCount || row.responseCount || 0);
+        if (threads > 0) {
+          bucket.totalThreads += threads;
+          bucket.threadCount += 1;
+        }
       });
 
-      // 6) Finalize per-agent stats
-  const agents = Object.values(agentsMap).map((a) => {
-  const ticketsCreated = a.ticketIds.size;
-  const ticketsResolved = a.resolvedTicketIds.size;
-  const pendingTickets = a.pendingTicketIds.size;
+      // =====================
+      // 8) Finalize result
+      // =====================
+      const agents = Object.values(agentsMap).map((a) => ({
+        agentName: a.agentName,
 
-  const avgResolutionHours =
-    ticketsResolved > 0 ? a.totalResolutionHours / ticketsResolved : 0;
+        ticketsCreated: a.ticketIds.size,
+        ticketsResolved: a.resolvedIds.size,
+        pendingTickets: a.pendingIds.size,
 
-  // Count how many tickets actually have a first response
-  // Here we approximate it as all tickets that contributed to totalFirstResponseHours:
-  const ticketsWithFirstResponse =
-    a.totalFirstResponseHours > 0 ? ticketsCreated : 0;
+        avgResolutionHours:
+          a.resolutionCount > 0
+            ? a.totalResolutionHours / a.resolutionCount
+            : 0,
 
-  const avgFirstResponseHours =
-    ticketsWithFirstResponse > 0
-      ? a.totalFirstResponseHours / ticketsWithFirstResponse
-      : 0;
+        avgFirstResponseHours:
+          a.firstResponseCount > 0
+            ? a.totalFirstResponseHours / a.firstResponseCount
+            : 0,
 
-  const avgThreads =
-    ticketsCreated > 0 ? a.totalThreads / ticketsCreated : 0;
+        avgThreads:
+          a.threadCount > 0 ? a.totalThreads / a.threadCount : 0,
+      }));
 
-  const avgSatisfaction =
-    a.satisfactionCount > 0
-      ? a.satisfactionSum / a.satisfactionCount
-      : null;
-
-  return {
-    agentName: a.agentName,
-    ticketsCreated,
-    ticketsResolved,
-    pendingTickets,
-    avgResolutionHours,
-    avgFirstResponseHours, // updated logic
-    avgThreads,
-    escalatedCount: a.escalatedCount,
-    singleTouchCount: a.singleTouchCount,
-    avgSatisfaction,
-  };
-});
-
-
-
-      // 7) Overall summary for top KPIs (optional)
-      const summary = agents.reduce(
-        (acc, a) => {
-          acc.ticketsCreated += a.ticketsCreated;
-          acc.ticketsResolved += a.ticketsResolved;
-          acc.pendingTickets += a.pendingTickets;
-          acc.escalatedTickets += a.escalatedCount;
-          acc.singleTouchTickets += a.singleTouchCount;
-          acc.totalThreads += a.avgThreads * a.ticketsCreated;
-          acc.totalResolutionHours += a.avgResolutionHours * a.ticketsResolved;
-          acc.totalFirstResponseHours +=
-            a.avgFirstResponseHours * a.ticketsCreated;
-          return acc;
-        },
-        {
-          ticketsCreated: 0,
-          ticketsResolved: 0,
-          pendingTickets: 0,
-          escalatedTickets: 0,
-          singleTouchTickets: 0,
-          totalThreads: 0,
-          totalResolutionHours: 0,
-          totalFirstResponseHours: 0,
-        }
-      );
-
-      summary.avgThreads =
-        summary.ticketsCreated > 0
-          ? summary.totalThreads / summary.ticketsCreated
-          : 0;
-      summary.avgResolutionHours =
-        summary.ticketsResolved > 0
-          ? summary.totalResolutionHours / summary.ticketsResolved
-          : 0;
-      summary.avgFirstResponseHours =
-        summary.ticketsCreated > 0
-          ? summary.totalFirstResponseHours / summary.ticketsCreated
-          : 0;
-
-      return res.json({ summary, agents });
+      return res.json({ agents });
     } catch (err) {
       console.error("Error in /api/agent-performance", err.message);
-      res
-        .status(500)
-        .json({ error: "Failed to compute agent performance" });
+      res.status(500).json({
+        error: "Failed to compute agent performance",
+      });
     }
   });
 }

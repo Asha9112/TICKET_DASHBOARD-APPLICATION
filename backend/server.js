@@ -13,6 +13,7 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+
 app.use((req, res, next) => {
   res.setHeader(
     "Content-Security-Policy",
@@ -20,6 +21,11 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+// ===== RAM store for archived tickets =====
+const archivedCache = Object.create(null);
+
+
 
 const clientId = "1000.VEPAX9T8TKDWJZZD95XT6NN52PRPQY";
 const clientSecret = "acca291b89430180ced19660cd28ad8ce1e4bec6e8";
@@ -252,7 +258,7 @@ let agentIdToName = {};
 
 // cache for archived tickets per department (in RAM)
 const ARCHIVED_TTL_MS = 5 * 60 * 1000; // 5 minutes
-let archivedCache = {}; // { [departmentId_agent]: { ts, rows } }
+// let archivedCache = {}; // { [departmentId_agent]: { ts, rows } }
 async function fetchTicketMetricsForTickets(accessToken, tickets) {
   const MAX_METRICS_TICKETS = 300;
 
@@ -1118,119 +1124,153 @@ app.get("/api/ticket-metrics-simple", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch ticket metrics" });
   }
 });
-// archived + active closed tickets endpoint (optional departmentId + agentId)
+// archived + active closed tickets endpoint
+// supports optional departmentId & agentId
 app.get("/api/archived-tickets", async (req, res) => {
   try {
     const { departmentId, agentId } = req.query;
-    const cacheKey = (departmentId || "all") + "_" + (agentId || "all");
+    const cacheKey = `${departmentId || "all"}_${agentId || "all"}`;
     const now = Date.now();
 
+    // ---------------- CACHE ----------------
     const cached = archivedCache[cacheKey];
     if (cached && now - cached.ts < ARCHIVED_TTL_MS) {
-      const rows = cached.rows;
-      const totalTickets = rows.length;
-      return res.json({ totalTickets, rows });
+      return res.json({
+        totalTickets: cached.rows.length,
+        rows: cached.rows,
+      });
     }
 
+    // ---------------- AUTH ----------------
     const accessToken = await getAccessToken();
 
-    // 1) archived tickets (from archivedTickets API)
+    // ---------------- 1. FETCH ARCHIVED ----------------
     let archivedTickets = [];
+
     if (departmentId) {
-      archivedTickets = await fetchAllArchivedTickets(accessToken, departmentId);
+      archivedTickets = await fetchAllArchivedTickets(
+        accessToken,
+        departmentId
+      );
     } else {
-      for (const dep of departmentList) {
-        const batch = await fetchAllArchivedTickets(accessToken, dep.id);
-        archivedTickets = archivedTickets.concat(batch);
-      }
+      // fetch all departments in parallel
+      const archivedBatches = await Promise.all(
+        departmentList.map((dep) =>
+          fetchAllArchivedTickets(accessToken, dep.id)
+        )
+      );
+      archivedTickets = archivedBatches.flat();
     }
 
-    // 2) active tickets (normal /tickets API) to pick CURRENT closed ones
-    const activeTickets = await fetchAllTickets(
-      accessToken,
-      departmentId ? [departmentId] : [],
-      agentId || null
-    );
-
-    // optional agent filter on archived side as well
+    // agent filter on archived tickets
     if (agentId) {
       archivedTickets = archivedTickets.filter(
         (t) => String(t.assigneeId) === String(agentId)
       );
     }
 
-    // filter only closed tickets from active list
+    // only CLOSED archived tickets
+    archivedTickets = archivedTickets.filter(
+      (t) => (t.status || "").toLowerCase() === "closed"
+    );
+
+    // ---------------- 2. FETCH ACTIVE (CLOSED ONLY) ----------------
+    const activeTickets = await fetchAllTickets(
+      accessToken,
+      departmentId ? [departmentId] : [],
+      agentId || null
+    );
+
     const activeClosedTickets = activeTickets.filter(
       (t) => (t.status || "").toLowerCase() === "closed"
     );
 
-    // 3) map both sets to a common row shape
+    // ---------------- 3. NORMALIZE DATA ----------------
     function mapTicket(ticket, source) {
-      const dept = departmentList.find((d) => d.id === ticket.departmentId);
-      const departmentId = ticket.departmentId || "";
-      const departmentName = dept ? dept.name : "";
+      const dept = departmentList.find(
+        (d) => String(d.id) === String(ticket.departmentId)
+      );
 
-      const assigneeIdStr = ticket.assigneeId ? String(ticket.assigneeId) : "";
-      const nameFromMap = assigneeIdStr && agentIdToName[assigneeIdStr];
+      const assigneeIdStr = ticket.assigneeId
+        ? String(ticket.assigneeId)
+        : "";
+
       const agentName =
-        nameFromMap ||
-        (ticket.assignee &&
-          (ticket.assignee.displayName ||
-            ticket.assignee.fullName ||
-            ticket.assignee.name ||
-            ticket.assignee.email)) ||
+        agentIdToName?.[assigneeIdStr] ||
+        ticket.assignee?.displayName ||
+        ticket.assignee?.fullName ||
+        ticket.assignee?.name ||
+        ticket.assignee?.email ||
         ticket.assigneeName ||
-        "Unassigned"; // key fallback so archived table never shows blank agent
+        "Unassigned";
 
-      const createdTime = ticket.createdTime || "";
-      const closedTime = ticket.closedTime || ticket.lastModifiedTime || "";
-      const resolutionTimeHours = diffInHours(createdTime, closedTime);
+      const createdTime = ticket.createdTime || null;
+      const closedTime =
+        ticket.closedTime || ticket.lastModifiedTime || null;
 
       return {
-        // keep original id so you can debug
         id: ticket.id,
         ticketNumber: ticket.ticketNumber || ticket.id,
-        status: ticket.status || "",
+        status: ticket.status || "closed",
+        agentId: assigneeIdStr,
         agentName,
+        departmentId: ticket.departmentId || "",
+        departmentName: dept?.name || "",
+        subject: ticket.subject || "",
         createdTime,
         closedTime,
-        resolutionTimeHours,
-        departmentId,
-        departmentName,
-        subject: ticket.subject || "",
-        source, // "archived" or "activeClosed"
+        resolutionTimeHours:
+          createdTime && closedTime
+            ? diffInHours(createdTime, closedTime)
+            : null,
+        source, // archived | activeClosed
       };
     }
 
-    const archivedRows = archivedTickets
-      .filter((t) => (t.status || "").toLowerCase() === "closed")
-      .map((t) => mapTicket(t, "archived"));
+    const archivedRows = archivedTickets.map((t) =>
+      mapTicket(t, "archived")
+    );
 
     const activeClosedRows = activeClosedTickets.map((t) =>
       mapTicket(t, "activeClosed")
     );
 
-    // 4) merge and sort by closedTime (latest first)
-    const allRows = archivedRows
-      .concat(activeClosedRows)
-      .sort((a, b) => {
-        const da = a.closedTime ? new Date(a.closedTime).getTime() : 0;
-        const db = b.closedTime ? new Date(b.closedTime).getTime() : 0;
-        return db - da;
-      });
+    // ---------------- 4. MERGE + DEDUPE ----------------
+    const seen = new Set();
+    const allRows = [...archivedRows, ...activeClosedRows].filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
 
-    const totalTickets = allRows.length;
+    // sort by closed time (latest first)
+    allRows.sort((a, b) => {
+      const da = a.closedTime ? new Date(a.closedTime).getTime() : 0;
+      const db = b.closedTime ? new Date(b.closedTime).getTime() : 0;
+      return db - da;
+    });
 
-    archivedCache[cacheKey] = { ts: now, rows: allRows };
+    // ---------------- CACHE SAVE ----------------
+    archivedCache[cacheKey] = {
+      ts: now,
+      rows: allRows,
+    };
 
-    res.json({ totalTickets, rows: allRows });
+    res.json({
+      totalTickets: allRows.length,
+      rows: allRows,
+    });
   } catch (error) {
-    console.error("Error in /api/archived-tickets", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch archived/closed tickets" });
+    console.error(
+      "❌ Error in /api/archived-tickets:",
+      error?.response?.data || error.message
+    );
+    res.status(500).json({
+      error: "Failed to fetch archived and closed tickets",
+    });
   }
 });
+
 // Default health check route (optional, keep if already present or needed)
 app.get("/", (req, res) => {
   res.send("Zoho Desk backend is running");

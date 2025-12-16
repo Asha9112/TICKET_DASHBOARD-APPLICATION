@@ -620,59 +620,76 @@ export default function AgentTicketAgeTable({
   }, [tableRows, visibleAgeColumns, searchTerm, statusOrder]);
 
   // ------------------- ARCHIVED TABLE FILTER + PAGINATION -------------------
+// ------------------- ARCHIVED TABLE FILTER + PAGINATION -------------------
 
-  const filteredArchivedRows = useMemo(() => {
-    const raw = searchTerm.trim();
-    let rows = [...archivedRows];
+const filteredArchivedRows = useMemo(() => {
+  let rows = [...archivedRows];
+  const raw = searchTerm.trim().toLowerCase();
 
-    const start =
-      startDate && !Number.isNaN(Date.parse(startDate))
-        ? new Date(startDate + "T00:00:00")
-        : null;
-    const end =
-      endDate && !Number.isNaN(Date.parse(endDate))
-        ? new Date(endDate + "T23:59:59")
-        : null;
+  // ---------- DATE FILTER ----------
+  const start =
+    startDate && !Number.isNaN(Date.parse(startDate))
+      ? new Date(startDate + "T00:00:00")
+      : null;
 
-    if (start || end) {
-      rows = rows.filter((row) => {
-        const d = row.createdTime ? new Date(row.createdTime) : null;
-        if (!d || Number.isNaN(d.getTime())) return false;
-        if (start && d < start) return false;
-        if (end && d > end) return false;
-        return true;
-      });
-    }
+  const end =
+    endDate && !Number.isNaN(Date.parse(endDate))
+      ? new Date(endDate + "T23:59:59")
+      : null;
 
-    if (!raw) {
-      return rows.sort((a, b) =>
-        String(a.agentName || "")
-          .toLowerCase()
-          .localeCompare(String(b.agentName || "").toLowerCase())
-      );
-    }
-
-    const q = raw.toLowerCase();
-    const isNumeric = /^\d+$/.test(q);
-
+  if (start || end) {
     rows = rows.filter((row) => {
-      const agent = String(row.agentName || "").toLowerCase();
-      const ticketNo = String(row.ticketNumber || "").trim().toLowerCase();
-
-      if (isNumeric) {
-        return ticketNo === q;
-      }
-
-      const words = agent.split(/\s+/).filter(Boolean);
-      return words.some((w) => w.startsWith(q));
+      const d = row.createdTime ? new Date(row.createdTime) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      if (start && d < start) return false;
+      if (end && d > end) return false;
+      return true;
     });
+  }
 
+  // ---------- NO SEARCH ----------
+  if (!raw) {
     return rows.sort((a, b) =>
       String(a.agentName || "")
         .toLowerCase()
         .localeCompare(String(b.agentName || "").toLowerCase())
     );
-  }, [archivedRows, searchTerm, startDate, endDate]);
+  }
+
+  // ---------- 1️⃣ DEPARTMENT PRIORITY ----------
+  const departmentMatches = rows.filter((row) =>
+    String(row.departmentName || "").toLowerCase().includes(raw)
+  );
+
+  if (departmentMatches.length > 0) {
+    return departmentMatches.sort((a, b) =>
+      String(a.agentName || "")
+        .toLowerCase()
+        .localeCompare(String(b.agentName || "").toLowerCase())
+    );
+  }
+
+  // ---------- 2️⃣ AGENT NAME + TICKET NUMBER ----------
+  const isNumeric = /^\d+$/.test(raw);
+
+  rows = rows.filter((row) => {
+    const agent = String(row.agentName || "").toLowerCase();
+    const ticketNo = String(row.ticketNumber || "").toLowerCase();
+
+    if (isNumeric) {
+      return ticketNo.includes(raw);
+    }
+
+    return agent.includes(raw);
+  });
+
+  return rows.sort((a, b) =>
+    String(a.agentName || "")
+      .toLowerCase()
+      .localeCompare(String(b.agentName || "").toLowerCase())
+  );
+}, [archivedRows, searchTerm, startDate, endDate]);
+
 
   const [archivedPage, setArchivedPage] = useState(1);
   const archivedPageSize = 500;
