@@ -1236,12 +1236,39 @@ app.get("/api/archived-tickets", async (req, res) => {
     );
 
     // ---------------- 4. MERGE + DEDUPE ----------------
+     // ---------------- 4. MERGE + DEDUPE ----------------
     const seen = new Set();
-    const allRows = [...archivedRows, ...activeClosedRows].filter((row) => {
+    let allRows = [...archivedRows, ...activeClosedRows].filter((row) => {
       if (seen.has(row.id)) return false;
       seen.add(row.id);
       return true;
     });
+
+    // 4b) ENRICH WITH METRICS FIRST RESPONSE TIME
+    try {
+      const metricsRows = await fetchTicketMetricsForTickets(
+        accessToken,
+        [...archivedTickets, ...activeClosedTickets]
+      );
+
+      const frMap = {};
+      metricsRows.forEach((m) => {
+        const key = String(m.ticketNumber || m.id || "");
+        if (!key) return;
+        frMap[key] = m.firstResponseTime || "";
+      });
+
+      allRows = allRows.map((row) => ({
+        ...row,
+        firstResponseTime: frMap[row.ticketNumber] || "",
+      }));
+    } catch (e) {
+      console.error(
+        "Error enriching archived tickets with metrics FRT:",
+        e?.message
+      );
+      // continue without firstResponseTime if metrics fail
+    }
 
     // sort by closed time (latest first)
     allRows.sort((a, b) => {
@@ -1270,6 +1297,7 @@ app.get("/api/archived-tickets", async (req, res) => {
     });
   }
 });
+
 
 // Default health check route (optional, keep if already present or needed)
 app.get("/", (req, res) => {

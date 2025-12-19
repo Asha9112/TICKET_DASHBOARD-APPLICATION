@@ -16,14 +16,39 @@ export default function AgentPerformanceTable({
 }) {
   const serialWidth = 60;
 
+  // Normalize row shape so both:
+  // - agent objects from /api/agent-performance
+  // - agent objects inside department.agents (dept drilldown)
+  // work with same table code.
+  const normalizedRows = useMemo(
+    () =>
+      (rows || []).map((r) => {
+        const resolved = Number(r.ticketsResolved || 0) || 0;
+        const pending = Number(r.pendingCount || 0) || 0;
+
+        return {
+          agentName: r.agentName || r.name || "Unassigned",
+          // Always: Total Created = Resolved + Pending
+          ticketsCreated: resolved + pending,
+          ticketsResolved: resolved,
+          pendingCount: pending,
+          avgResolutionText: r.avgResolutionText || "-",
+          avgFirstResponseText: r.avgFirstResponseText || "-",
+          avgThreads:
+            typeof r.avgThreads === "number" ? r.avgThreads : r.avgThreads ?? null,
+        };
+      }),
+    [rows]
+  );
+
   // Sort rows to keep top tickets resolved agent first
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
+    return [...normalizedRows].sort((a, b) => {
       const aResolved = parseInt(a.ticketsResolved, 10) || 0;
       const bResolved = parseInt(b.ticketsResolved, 10) || 0;
       return bResolved - aResolved; // Descending order (highest first)
     });
-  }, [rows]);
+  }, [normalizedRows]);
 
   const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
 
@@ -85,19 +110,15 @@ export default function AgentPerformanceTable({
           </tr>
         ) : (
           pagedRows.map((row, index) => {
-            // global position in sorted list (0-based)
             const globalPos = (page - 1) * pageSize + index;
 
-            // base stripe background
             const stripeBg = index % 2 === 0 ? "#b4c2e3ff" : "#eef1f5ff";
 
-            // highlight top 3 by ticketsResolved
             let rowBg = stripeBg;
-            if (globalPos === 0) rowBg = "#ffd700"; // 1st - gold
-            else if (globalPos === 1) rowBg = "#c0c0c0"; // 2nd - silver
-            else if (globalPos === 2) rowBg = "#f0a254ff"; // 3rd - bronze
+            if (globalPos === 0) rowBg = "#ffd700"; // gold
+            else if (globalPos === 1) rowBg = "#c0c0c0"; // silver
+            else if (globalPos === 2) rowBg = "#f0a254ff"; // bronze
 
-            // medals for top 3 (raw emoji only)
             const medal =
               globalPos === 0
                 ? "🥇"
@@ -107,10 +128,8 @@ export default function AgentPerformanceTable({
                 ? "🥉"
                 : "";
 
-            // for Sl. No. display 1-based index
             const serialNo = globalPos + 1;
 
-            // derive total created = resolved + pending (frontend-only)
             const resolved = Number(row.ticketsResolved || 0);
             const pending = Number(row.pendingCount || 0);
             const totalCreated = resolved + pending;
@@ -137,7 +156,7 @@ export default function AgentPerformanceTable({
                     background: rowBg,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between", // name left, emoji right
+                    justifyContent: "space-between",
                     paddingRight: 8,
                   }}
                 >
@@ -161,10 +180,14 @@ export default function AgentPerformanceTable({
                   {row.avgResolutionText}
                 </td>
                 <td style={{ ...centerCellStyle, background: rowBg }}>
-                  {row.avgFirstResponseText}
+                  {totalCreated > 0 ? row.avgFirstResponseText : "-"}
                 </td>
                 <td style={{ ...centerCellStyle, background: rowBg }}>
-                  {row.avgThreads != null ? row.avgThreads.toFixed(2) : "0.00"}
+                  {totalCreated > 0
+                    ? row.avgThreads != null
+                      ? row.avgThreads.toFixed(2)
+                      : "0.00"
+                    : "-"}
                 </td>
               </tr>
             );

@@ -48,7 +48,7 @@
 .legend-item {
   width: auto;               /* Fixed width matching select buttons */
   text-align: center;
-  padding: 7px 3px;
+  padding: 4px 4px;
   border-radius: 17px;
   font-weight: bold;
     background: #0d0d13 !important; 

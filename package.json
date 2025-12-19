@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "chart.js": "^4.5.1",
+    "chartjs-plugin-datalabels": "^2.2.0",
+    "chartjs-plugin-zoom": "^2.2.0",
+    "file-saver": "^2.0.5",
+    "jspdf": "^3.0.4",
+    "react-chartjs-2": "^5.3.1",
+    "recharts": "^3.6.0",
     "xlsx": "^0.18.5"
   }
 }

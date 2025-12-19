@@ -9,6 +9,8 @@ import DepartmentAgeTable from "./DepartmentAgeTable";
 import AgentAgeTable from "./AgentAgeTable";
 import { exportToExcel } from "../../utils/exportToExcel";
 import AgentPerformanceTable from "./AgentPerformanceTable";
+import AgentPerformanceCharts from "./AgentPerformanceCharts";
+
 
 import {
   formatDateWithMonthName,
@@ -58,23 +60,30 @@ export default function AgentTicketAgeTable({
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
   const [endDate, setEndDate] = useState(""); // YYYY-MM-DD
+  const [agentPerfView, setAgentPerfView] = useState("charts"); // "charts" | "table"
+  const [showDateRange, setShowDateRange] = useState(false);
+
+
 
   const showMetricsTable = selectedAges.includes("metrics");
   const showPendingTable = selectedAges.includes("pending");
   const showArchivedTable = selectedAges.includes("archived");
   const showAgentPerformanceTable = showAgentPerformance; // NEW
+const archivedColumns = [
+  { key: "siNo", label: "SI. NO." },
+  { key: "agentName", label: "Agent Name" },
+  { key: "departmentName", label: "Department" },
+  { key: "ticketNumber", label: "Ticket Number" },
+  { key: "subject", label: "Subject" },
+  { key: "status", label: "Status" },
+  { key: "createdTime", label: "Created" },
+  { key: "closedTime", label: "Closed" },
+  { key: "resolutionTimeHours", label: "Resolution Time (Hours)" },
 
-  const archivedColumns = [
-    { key: "siNo", label: "SI. NO." },
-    { key: "agentName", label: "Agent Name" },
-    { key: "departmentName", label: "Department" },
-    { key: "ticketNumber", label: "Ticket Number" },
-    { key: "subject", label: "Subject" },
-    { key: "status", label: "Status" },
-    { key: "createdTime", label: "Created" },
-    { key: "closedTime", label: "Closed" },
-    { key: "resolutionTimeHours", label: "Resolution Time (Hours)" },
-  ];
+  // ✅ NEW COLUMN (THIS IS THE FIX)
+  { key: "firstResponseTime", label: "First Response Time" },
+];
+
 
   const ageColumns = [
     {
@@ -620,76 +629,59 @@ export default function AgentTicketAgeTable({
   }, [tableRows, visibleAgeColumns, searchTerm, statusOrder]);
 
   // ------------------- ARCHIVED TABLE FILTER + PAGINATION -------------------
-// ------------------- ARCHIVED TABLE FILTER + PAGINATION -------------------
 
-const filteredArchivedRows = useMemo(() => {
-  let rows = [...archivedRows];
-  const raw = searchTerm.trim().toLowerCase();
+  const filteredArchivedRows = useMemo(() => {
+    const raw = searchTerm.trim();
+    let rows = [...archivedRows];
 
-  // ---------- DATE FILTER ----------
-  const start =
-    startDate && !Number.isNaN(Date.parse(startDate))
-      ? new Date(startDate + "T00:00:00")
-      : null;
+    const start =
+      startDate && !Number.isNaN(Date.parse(startDate))
+        ? new Date(startDate + "T00:00:00")
+        : null;
+    const end =
+      endDate && !Number.isNaN(Date.parse(endDate))
+        ? new Date(endDate + "T23:59:59")
+        : null;
 
-  const end =
-    endDate && !Number.isNaN(Date.parse(endDate))
-      ? new Date(endDate + "T23:59:59")
-      : null;
+    if (start || end) {
+      rows = rows.filter((row) => {
+        const d = row.createdTime ? new Date(row.createdTime) : null;
+        if (!d || Number.isNaN(d.getTime())) return false;
+        if (start && d < start) return false;
+        if (end && d > end) return false;
+        return true;
+      });
+    }
 
-  if (start || end) {
+    if (!raw) {
+      return rows.sort((a, b) =>
+        String(a.agentName || "")
+          .toLowerCase()
+          .localeCompare(String(b.agentName || "").toLowerCase())
+      );
+    }
+
+    const q = raw.toLowerCase();
+    const isNumeric = /^\d+$/.test(q);
+
     rows = rows.filter((row) => {
-      const d = row.createdTime ? new Date(row.createdTime) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
-      if (start && d < start) return false;
-      if (end && d > end) return false;
-      return true;
-    });
-  }
+      const agent = String(row.agentName || "").toLowerCase();
+      const ticketNo = String(row.ticketNumber || "").trim().toLowerCase();
 
-  // ---------- NO SEARCH ----------
-  if (!raw) {
+      if (isNumeric) {
+        return ticketNo === q;
+      }
+
+      const words = agent.split(/\s+/).filter(Boolean);
+      return words.some((w) => w.startsWith(q));
+    });
+
     return rows.sort((a, b) =>
       String(a.agentName || "")
         .toLowerCase()
         .localeCompare(String(b.agentName || "").toLowerCase())
     );
-  }
-
-  // ---------- 1️⃣ DEPARTMENT PRIORITY ----------
-  const departmentMatches = rows.filter((row) =>
-    String(row.departmentName || "").toLowerCase().includes(raw)
-  );
-
-  if (departmentMatches.length > 0) {
-    return departmentMatches.sort((a, b) =>
-      String(a.agentName || "")
-        .toLowerCase()
-        .localeCompare(String(b.agentName || "").toLowerCase())
-    );
-  }
-
-  // ---------- 2️⃣ AGENT NAME + TICKET NUMBER ----------
-  const isNumeric = /^\d+$/.test(raw);
-
-  rows = rows.filter((row) => {
-    const agent = String(row.agentName || "").toLowerCase();
-    const ticketNo = String(row.ticketNumber || "").toLowerCase();
-
-    if (isNumeric) {
-      return ticketNo.includes(raw);
-    }
-
-    return agent.includes(raw);
-  });
-
-  return rows.sort((a, b) =>
-    String(a.agentName || "")
-      .toLowerCase()
-      .localeCompare(String(b.agentName || "").toLowerCase())
-  );
-}, [archivedRows, searchTerm, startDate, endDate]);
-
+  }, [archivedRows, searchTerm, startDate, endDate]);
 
   const [archivedPage, setArchivedPage] = useState(1);
   const archivedPageSize = 500;
@@ -755,50 +747,118 @@ const filteredArchivedRows = useMemo(() => {
     showArchivedTable,
     departmentViewEnabled,
   ]);
-
-  // ---------- AGENT PERFORMANCE TABLE DATA (TEMP) ----------
-  // ---------- AGENT PERFORMANCE TABLE DATA (AGGREGATED) ----------
+// ---------- AGENT PERFORMANCE TABLE DATA (AGGREGATED) ----------
 
 // which statuses count as resolved
 const resolvedStatusSet = new Set(["closed", "resolved", "archived"]);
 // which statuses count as escalated
 const escalatedStatusSet = new Set(["escalated"]);
 
+// NEW: compute resolution stats from archived/closed tickets (calendar hours)
+const agentResolutionStats = useMemo(() => {
+  const byAgent = {};
+  // use filteredArchivedRows which already respects search + date filters
+  filteredArchivedRows.forEach((row) => {
+    const name = row.agentName || "Unknown";
+    const hrs = Number(row.resolutionTimeHours) || 0; // from archived API
+    if (!byAgent[name]) {
+      byAgent[name] = { sumHrs: 0, count: 0 };
+    }
+    byAgent[name].sumHrs += hrs;
+    byAgent[name].count += 1;
+  });
+  return byAgent;
+}, [filteredArchivedRows]);
+
+// NEW: FRT from archived tickets (using firstResponseTime on archived rows)
+const agentArchivedFrStats = useMemo(() => {
+  const byAgent = {};
+  // filteredArchivedRows already respects search + date filters
+  filteredArchivedRows.forEach((row) => {
+    const name = row.agentName || "Unknown";
+    if (!byAgent[name]) {
+      byAgent[name] = { frSumMin: 0, frCount: 0 };
+    }
+    // firstResponseTime should be same Zoho "H:MM hrs" format
+    const frMin = zohoHrsToMinutes(row.firstResponseTime);
+    if (frMin != null) {
+      byAgent[name].frSumMin += frMin;
+      byAgent[name].frCount += 1;
+    }
+  });
+  return byAgent;
+}, [filteredArchivedRows]);
+
+// ---------- AGENT PERFORMANCE TABLE DATA (AGGREGATED) ----------
 const agentPerformanceRows = useMemo(() => {
   const byAgent = {};
 
-  const ensureAgent = (name) => {
-    const key = name || "Unknown";
-    if (!byAgent[key]) {
-      byAgent[key] = {
-        agentName: key,
-        ticketsCreated: 0,
-        ticketsResolved: 0,
-        pendingCount: 0,
-        frSumMin: 0,
-        frCount: 0,
-        resSumMin: 0,
-        resCount: 0,
-        threadSum: 0,
-        threadCount: 0,
-        escalatedCount: 0,
-        singleTouchCount: 0,
-      };
-    }
-    return byAgent[key];
-  };
+  const ensureAgent = (name, departmentName = null) => {
+  const key = name || "Unknown";
 
-  // 1) METRICS ROWS -> created, FRT, resolution, threads, escalations, single-touch
+  if (!byAgent[key]) {
+    byAgent[key] = {
+      agentName: key,
+
+      ticketsCreated: 0,
+      ticketsResolved: 0,
+      pendingCount: 0,
+
+      frSumMin: 0,
+      frCount: 0,
+
+      resSumMin: 0, // kept for compatibility
+      resCount: 0,
+
+      threadSum: 0,
+      threadCount: 0,
+
+      escalatedCount: 0,
+      singleTouchCount: 0,
+
+      openCount: 0,
+      holdCount: 0,
+      inProgressCount: 0,
+
+      // ✅ IMPORTANT: departments must always exist
+      departments: new Set(),
+    };
+  }
+
+  // ✅ ALWAYS REGISTER DEPARTMENT (metrics / pending / archived)
+  if (departmentName) {
+    byAgent[key].departments.add(departmentName);
+  }
+
+  return byAgent[key];
+};
+
+
+  // 1) METRICS ROWS -> created, FRT, threads, escalations, status buckets
   sortedMetricsRows.forEach((row) => {
     const agentName = row.agentName || "Unknown";
     const ag = ensureAgent(agentName);
 
     ag.ticketsCreated += 1;
 
+    if (row.departmentName) {
+      ag.departments.add(row.departmentName);
+    }
+
     const normStatus = normalizeStatus(row.status);
 
     if (resolvedStatusSet.has(normStatus)) {
       ag.ticketsResolved += 1;
+    }
+
+    if (normStatus === "open") ag.openCount += 1;
+    else if (normStatus === "hold") ag.holdCount += 1;
+    else if (normStatus === "inprogress" || normStatus === "inProgress") {
+      ag.inProgressCount += 1;
+    }
+
+    if (escalatedStatusSet.has(normStatus)) {
+      ag.escalatedCount += 1;
     }
 
     const frMin = zohoHrsToMinutes(row.firstResponseTime);
@@ -807,19 +867,9 @@ const agentPerformanceRows = useMemo(() => {
       ag.frCount += 1;
     }
 
-    const resMin = zohoHrsToMinutes(row.resolutionTime);
-    if (resMin != null) {
-      ag.resSumMin += resMin;
-      ag.resCount += 1;
-    }
-
     const tc = Number(row.threadCount) || 0;
     ag.threadSum += tc;
     if (tc > 0) ag.threadCount += 1;
-
-    if (escalatedStatusSet.has(normStatus)) {
-      ag.escalatedCount += 1;
-    }
 
     const outgoing = Number(row.outgoingCount) || 0;
     if (outgoing === 1) {
@@ -832,6 +882,9 @@ const agentPerformanceRows = useMemo(() => {
     const agentName = row.name || "Unknown";
     const ag = ensureAgent(agentName);
     ag.pendingCount += 1;
+    if (row.department) {
+      ag.departments.add(row.department);
+    }
   });
 
   // 3) ARCHIVED ROWS -> extra resolved (if any tickets only appear there)
@@ -842,13 +895,27 @@ const agentPerformanceRows = useMemo(() => {
     if (resolvedStatusSet.has(normStatus)) {
       ag.ticketsResolved += 1;
     }
+    if (row.departmentName) {
+      ag.departments.add(row.departmentName);
+    }
   });
 
-  // build final rows
+  // 3b) merge archived FRT stats into per-agent FRT sums/counts
+  Object.entries(agentArchivedFrStats).forEach(([name, stats]) => {
+    const ag = ensureAgent(name);
+    ag.frSumMin += stats.frSumMin;
+    ag.frCount += stats.frCount;
+  });
+
+  // build final rows using archived-based resolution for avg
   return Object.values(byAgent)
     .map((ag) => {
-      const avgResMin =
-        ag.resCount > 0 ? Math.round(ag.resSumMin / ag.resCount) : null;
+      // calendar-time resolution from archived/closed tickets
+      const resStats =
+        agentResolutionStats[ag.agentName] || { sumHrs: 0, count: 0 };
+      const avgResHrs =
+        resStats.count > 0 ? resStats.sumHrs / resStats.count : 0;
+
       const avgFrMin =
         ag.frCount > 0 ? Math.round(ag.frSumMin / ag.frCount) : null;
       const avgThreads =
@@ -859,13 +926,22 @@ const agentPerformanceRows = useMemo(() => {
         ticketsCreated: ag.ticketsCreated,
         ticketsResolved: ag.ticketsResolved,
         pendingCount: ag.pendingCount,
-        avgResolutionText:
-          avgResMin != null ? minutesToHM(avgResMin) : "-",
+
+        // avgResHrs is in hours -> convert to minutes then HH:MM
+        avgResolutionText: avgResHrs
+          ? minutesToHM(Math.round(avgResHrs * 60))
+          : "0:00",
+
         avgFirstResponseText:
           avgFrMin != null ? minutesToHM(avgFrMin) : "-",
         avgThreads,
         escalatedCount: ag.escalatedCount,
         singleTouchCount: ag.singleTouchCount,
+        openCount: ag.openCount,
+        holdCount: ag.holdCount,
+        inProgressCount: ag.inProgressCount,
+        departmentName:
+          Array.from(ag.departments || [])[0] || "All Departments",
       };
     })
     .sort((a, b) =>
@@ -873,13 +949,19 @@ const agentPerformanceRows = useMemo(() => {
         sensitivity: "base",
       })
     );
-}, [sortedMetricsRows, pendingTableRows, filteredArchivedRows]);
+}, [
+  sortedMetricsRows,
+  pendingTableRows,
+  filteredArchivedRows,
+  agentResolutionStats,
+  agentArchivedFrStats,
+]);
 
 
 const [agentPerfPage, setAgentPerfPage] = useState(1);
 const agentPerfPageSize = 100;
 
-// NEW: filter by global searchTerm for performance table
+// filter by global searchTerm for performance table (and charts)
 const agentPerformanceRowsForDisplay = useMemo(() => {
   const q = searchTerm.trim().toLowerCase();
   if (!q) return agentPerformanceRows;
@@ -893,28 +975,29 @@ const agentPerfTotalPages = Math.max(
   Math.ceil(agentPerformanceRowsForDisplay.length / agentPerfPageSize)
 );
 
+// ------------------- RENDER -------------------
 
-  // ------------------- RENDER -------------------
-
-  return (
-    <div style={{ fontFamily: baseFont }}>
-      {/* Title + Search row */}
-      <div
-        style={{
-          maxWidth: "100%",
-          margin: "10px auto 4px auto",
-          padding: "0 5px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-        }}
-      >
+return (
+  <div style={{ fontFamily: baseFont }}>
+    {/* ================= HEADER : TITLE + FILTERS ================= */}
+    <div
+      style={{
+        maxWidth: "100%",
+        margin: "10px auto 4px auto",
+        padding: "8px 10px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        background: "linear-gradient(90deg, #1E4489, #3b6fd8)",
+        borderRadius: 6,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+      }}
+    >
+      {/* ---------- LEFT: TITLE + CHART/TABLE TOGGLE ---------- */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div
           style={{
-            padding: "7px 7px",
-            borderRadius: 4,
-            background: "linear-gradient(135deg,#1E4489 70%,#1E4489 100%)",
             color: "white",
             fontWeight: 900,
             fontSize: 15,
@@ -926,201 +1009,196 @@ const agentPerfTotalPages = Math.max(
           {currentTableTitle}
         </div>
 
-        {/* Right side: Search + Date range + Export */}
-        <div
+        {showAgentPerformanceTable && (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setAgentPerfView("charts")}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                borderRadius: 4,
+                border: "none",
+                cursor: "pointer",
+                backgroundColor:
+                  agentPerfView === "charts" ? "#f1c40f" : "#2c3e50",
+                color: "white",
+                fontWeight: 700,
+              }}
+            >
+              Charts
+            </button>
+            <button
+              onClick={() => setAgentPerfView("table")}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                borderRadius: 4,
+                border: "none",
+                cursor: "pointer",
+                backgroundColor:
+                  agentPerfView === "table" ? "#f1c40f" : "#2c3e50",
+                color: "white",
+                fontWeight: 700,
+              }}
+            >
+              Table
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ---------- RIGHT: SEARCH + DATE RANGE + EXPORT ---------- */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Search */}
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder={currentSearchPlaceholder}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
+            minWidth: 50,
+            padding: "5px 6px",
+            borderRadius: 4,
+            border: "2px solid #34495e",
+            fontSize: 12,
+            fontWeight: 700,
           }}
-        >
+        />
+
+        {/* -------- ALL TIME : SINGLE DATE RANGE BOX -------- */}
+        <div style={{ position: "relative" }}>
           <input
             type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={currentSearchPlaceholder}
+            readOnly
+            value={
+              startDate && endDate ? `${startDate} → ${endDate}` : "All Time"
+            }
+            onClick={() => setShowDateRange((v) => !v)}
             style={{
-              minWidth: 240,
-              maxWidth: 360,
-              padding: "5px 5px",
+              width: 160,
+              padding: "5px 6px",
               borderRadius: 4,
               border: "2px solid #34495e",
-              outline: "none",
               fontSize: 12,
-              fontWeight: 900,
-              fontFamily: baseFont,
-              background: "white",
-              color: "Black",
-              textAlign: "left",
-            }}
-          />
-
-          {/* Date range inputs */}
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{
-              padding: "4px 6px",
-              borderRadius: 4,
-              border: "1px solid #34495e",
-              fontSize: 11,
-              fontFamily: baseFont,
-            }}
-          />
-          <span style={{ color: "#fff", fontSize: 12 }}>to</span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={{
-              padding: "4px 6px",
-              borderRadius: 4,
-              border: "1px solid #34495e",
-              fontSize: 11,
-              fontFamily: baseFont,
-            }}
-          />
-
-          <button
-            onClick={() => {
-              let excelRows = [];
-
-              // 1) METRICS TABLE VIEW
-              if (showMetricsTable) {
-                excelRows = sortedMetricsRows.map((r, idx) => ({
-                  "Sl. No.": idx + 1,
-                  "Agent Name": r.agentName,
-                  "Ticket Number": r.ticketNumber,
-                  "Ticket Status": r.status,
-                  Department: r.departmentName,
-                  "Ticket Created (IST)": r.createdTime,
-                  "First Response Time": r.firstResponseTime,
-                  "Resolution Time": r.resolutionTime,
-                  Threads: r.threadCount,
-                  "User Response": r.responseCount,
-                  "Agent Response": r.outgoingCount,
-                  Reopens: r.reopenCount,
-                  Reassigns: r.reassignCount,
-                }));
-                exportToExcel(excelRows, "Ticket_Metrics.xlsx", "Metrics");
-                return;
-              }
-
-              // 2) PENDING STATUS TABLE VIEW
-              if (showPendingTable) {
-                excelRows = searchedGroupedPendingRows.map((r, idx) => ({
-                  "Sl. No.": idx + 1,
-                  "Agent Name": r.name,
-                  "Department Name": r.department,
-                  "Total Pending Tickets": r.totalTickets,
-                  "Ticket Status": r.status,
-                  "Ticket Number": r.ticketNumber,
-                  "Ticket Created Date & Time": r.ticketCreated,
-                  "Ticket Age Days": r.daysNotResponded,
-                }));
-                exportToExcel(excelRows, "Pending_Tickets.xlsx", "Pending");
-                return;
-              }
-
-              // 3) ARCHIVED TICKETS TABLE VIEW
-              if (showArchivedTable) {
-                excelRows = filteredArchivedRows.map((r, idx) => ({
-                  "Sl. No.": idx + 1,
-                  "Agent Name": r.agentName,
-                  Department: r.departmentName,
-                  "Ticket Number": r.ticketNumber,
-                  Subject: r.subject,
-                  Status: r.status,
-                  Created: r.createdTime,
-                  Closed: r.closedTime,
-                  "Resolution Time (Hours)": r.resolutionTimeHours,
-                }));
-                exportToExcel(excelRows, "Archived_Tickets.xlsx", "Archived");
-                return;
-              }
-
-              // 4) DEPARTMENT-WISE TICKET AGE VIEW
-              if (departmentViewEnabled) {
-                excelRows = departmentRowsForDisplay.map((r) => ({
-                  "Sl. No.": r.si,
-                  Department: r.departmentName,
-                  "Total Tickets": r.total,
-                  "1 - 7 Days Open": r.tickets_1_7_open,
-                  "1 - 7 Days Hold": r.tickets_1_7_hold,
-                  "1 - 7 Days In Progress": r.tickets_1_7_inProgress,
-                  "1 - 7 Days Escalated": r.tickets_1_7_escalated,
-                  "8 - 15 Days Open": r.tickets_8_15_open,
-                  "8 - 15 Days Hold": r.tickets_8_15_hold,
-                  "8 - 15 Days In Progress": r.tickets_8_15_inProgress,
-                  "8 - 15 Days Escalated": r.tickets_8_15_escalated,
-                  "15+ Days Open": r.tickets_15plus_open,
-                  "15+ Days Hold": r.tickets_15plus_hold,
-                  "15+ Days In Progress": r.tickets_15plus_inProgress,
-                  "15+ Days Escalated": r.tickets_15plus_escalated,
-                }));
-                exportToExcel(
-                  excelRows,
-                  "Department_Ticket_Age.xlsx",
-                  "Departments"
-                );
-                return;
-              }
-
-              // 5) DEFAULT: AGENT-WISE TICKET AGE VIEW
-              excelRows = tableRowsForDisplay.map((row, index) => {
-                const base = {
-                  "Sl. No.": index + 1,
-                  "Agent Name": row.name,
-                };
-
-                if (selectedDepartmentId) {
-                  base["Department"] = row.departmentName || "";
-                }
-
-                base["Total Ticket Count"] = visibleAgeColumns.reduce(
-                  (sum, col) =>
-                    sum +
-                    statusOrder.reduce(
-                      (s, status) =>
-                        s + countFromArray(row, col.ageProp, status),
-                      0
-                    ),
-                  0
-                );
-
-                visibleAgeColumns.forEach((col) => {
-                  base[col.label] = statusOrder.reduce(
-                    (s, status) =>
-                      s + countFromArray(row, col.ageProp, status),
-                    0
-                  );
-                });
-
-                return base;
-              });
-
-              exportToExcel(excelRows, "Agent_Ticket_Age.xlsx", "Agents");
-            }}
-            style={{
-              padding: "6px 14px",
-              backgroundColor: "#4CAF50",
-              color: "#fff",
-              border: "none",
-              borderRadius: 4,
+              fontWeight: 700,
               cursor: "pointer",
-              fontWeight: 600,
-              whiteSpace: "nowrap",
+              background: "white",
+              textAlign: "center",
             }}
-          >
-            Export to Excel
-          </button>
+          />
+
+          {/* Dropdown */}
+          {showDateRange && (
+            <div
+              style={{
+                position: "absolute",
+                top: "110%",
+                right: 0,
+                background: "white",
+                border: "1px solid #ccc",
+                borderRadius: 6,
+                padding: "10px 12px",
+                boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+                zIndex: 999,
+                minWidth: "auto",
+              }}
+            >
+              {/* Start Date */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  marginBottom: 8,
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#34495e",
+                    marginBottom: 2,
+                  }}
+                >
+                  Select start date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{
+                    width: 140,
+                    padding: "4px 6px",
+                    borderRadius: 4,
+                    border: "1px solid #34495e",
+                    fontSize: 11,
+                  }}
+                />
+              </div>
+
+              {/* End Date */}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <label
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#34495e",
+                    marginBottom: 2,
+                  }}
+                >
+                  Select end date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{
+                    width: 140,
+                    padding: "4px 6px",
+                    borderRadius: 4,
+                    border: "1px solid #34495e",
+                    fontSize: 11,
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Export */}
+        <button
+          onClick={() => {
+            // TODO: Implement export logic
+          }}
+          style={{
+            padding: "6px 14px",
+            backgroundColor: "#4CAF50",
+            color: "#fff",
+            border: "none",
+            borderRadius: 4,
+            cursor: "pointer",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Export to Excel
+        </button>
       </div>
-      {/* Main scroll container: only the tables scroll */}
+    </div>
+    {/* ================= END HEADER ================= */}
+
+    {/* -------- AGENT PERFORMANCE CHARTS (ONLY WHEN CHART VIEW) -------- */}
+    {showAgentPerformanceTable && agentPerfView === "charts" && (
+      <AgentPerformanceCharts
+        rows={agentPerformanceRowsForDisplay}
+        archivedRows={filteredArchivedRows}
+      />
+    )}
+
+    {/* -------- MAIN TABLE CONTAINER (HIDDEN WHEN CHART VIEW) -------- */}
+    {!(showAgentPerformanceTable && agentPerfView === "charts") && (
       <div
         style={{
-          margin: "8px auto 8px auto",
+          margin: "8px auto",
           border: "2px solid #32406b",
           background: "white",
           width: "100%",
@@ -1129,10 +1207,9 @@ const agentPerfTotalPages = Math.max(
           maxHeight: "70vh",
         }}
       >
-        {showAgentPerformanceTable ? (
+        {showAgentPerformanceTable && agentPerfView === "table" ? (
           <AgentPerformanceTable
-           rows={agentPerformanceRowsForDisplay}   // <--- filtered using global searchTerm
-           
+            rows={agentPerformanceRowsForDisplay}
             page={agentPerfPage}
             pageSize={agentPerfPageSize}
             totalPages={agentPerfTotalPages}
@@ -1182,38 +1259,39 @@ const agentPerfTotalPages = Math.max(
           />
         )}
       </div>
+    )}
 
-      {/* Metrics pagination OUTSIDE table height & scroll area */}
-      {showMetricsTable && sortedMetricsRows.length > metricsPageSize && (
-        <div
-          style={{
-            padding: "8px 12px 16px 12px",
-            textAlign: "center",
-            color: "white",
-            fontSize: 12,
-          }}
+    {/* -------- METRICS PAGINATION -------- */}
+    {showMetricsTable && sortedMetricsRows.length > metricsPageSize && (
+      <div
+        style={{
+          padding: "8px 12px 16px",
+          textAlign: "center",
+          color: "white",
+          fontSize: 12,
+        }}
+      >
+        <button
+          onClick={() => setMetricsPage((p) => Math.max(1, p - 1))}
+          disabled={metricsPage === 1}
         >
-          <button
-            onClick={() => setMetricsPage((p) => Math.max(1, p - 1))}
-            disabled={metricsPage === 1}
-            style={{ marginRight: 8 }}
-          >
-            Prev
-          </button>
-          <span style={{ margin: "0 8px" }}>
-            Page {metricsPage} of {metricsTotalPages}
-          </span>
-          <button
-            onClick={() =>
-              setMetricsPage((p) => Math.min(metricsTotalPages, p + 1))
-            }
-            disabled={metricsPage === metricsTotalPages}
-            style={{ marginLeft: 8 }}
-          >
-            Next
-          </button>
-        </div>
-      )}
-    </div>
-  );
+          Prev
+        </button>
+        <span style={{ margin: "0 10px" }}>
+          Page {metricsPage} of {metricsTotalPages}
+        </span>
+        <button
+          onClick={() =>
+            setMetricsPage((p) => Math.min(metricsTotalPages, p + 1))
+          }
+          disabled={metricsPage === metricsTotalPages}
+        >
+          Next
+        </button>
+      </div>
+    )}
+  </div>
+);
+
+
 }

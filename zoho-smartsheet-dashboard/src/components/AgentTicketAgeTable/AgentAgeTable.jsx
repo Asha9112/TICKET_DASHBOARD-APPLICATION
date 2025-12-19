@@ -1,5 +1,3 @@
-// src/components/AgentTicketAgeTable/AgentAgeTable.jsx
-
 import React from "react";
 import Tippy from "@tippyjs/react";
 import "tippy.js/dist/tippy.css";
@@ -11,6 +9,15 @@ import {
   leftCellStyle,
   rowBaseStyle,
 } from "./styles";
+
+/* ================= STATUS COLOR MAP ================= */
+const STATUS_COLORS = {
+  open: "#bd2331",         // red for open tickets
+  hold: "#ffc107",         // yellow for hold tickets
+  inProgress: "#8fc63d",   // green for tickets in progress
+  escalated: "#ef6724",    // orange for escalated tickets
+};
+/* =================================================== */
 
 export default function AgentAgeTable({
   columnsToShow,
@@ -25,7 +32,7 @@ export default function AgentAgeTable({
   selectedDepartmentId,
   departmentsMap,
 }) {
-  const serialWidth = 60; // adjust to match your SI. NO. column width
+  const serialWidth = 60;
 
   return (
     <table
@@ -68,6 +75,7 @@ export default function AgentAgeTable({
           ))}
         </tr>
       </thead>
+
       <tbody>
         {tableRowsForDisplay.length === 0 ? (
           <tr>
@@ -76,7 +84,7 @@ export default function AgentAgeTable({
               style={{
                 textAlign: "center",
                 padding: 16,
-                color: "Black",
+                color: "black",
                 fontSize: 12,
                 background: "#181b26",
                 borderRadius: 14,
@@ -108,7 +116,7 @@ export default function AgentAgeTable({
 
             return (
               <tr key={row.name} style={rowBaseStyle(rowIndex)}>
-                {/* Serial number, sticky */}
+                {/* Serial */}
                 <td
                   style={{
                     ...serialBaseStyle,
@@ -121,7 +129,7 @@ export default function AgentAgeTable({
                   {rowIndex + 1}
                 </td>
 
-                {/* Agent name, sticky next to serial */}
+                {/* Agent Name */}
                 <td
                   style={{
                     ...(hoveredRowIndex === rowIndex
@@ -137,12 +145,12 @@ export default function AgentAgeTable({
                   {row.name}
                 </td>
 
-                {/* Department name (only when department filter is active) */}
+                {/* Department */}
                 {selectedDepartmentId && (
                   <td style={leftCellStyle}>{row.departmentName}</td>
                 )}
 
-                {/* Total tickets across all visible age columns and statuses */}
+                {/* Total */}
                 <td
                   style={
                     hoveredRowIndex === rowIndex
@@ -161,7 +169,7 @@ export default function AgentAgeTable({
                   )}
                 </td>
 
-                {/* Per-age bucket cells */}
+                {/* Age Buckets */}
                 {visibleAgeColumns.map((col) => (
                   <td
                     key={col.key}
@@ -178,7 +186,7 @@ export default function AgentAgeTable({
                             .map((key) =>
                               aggregateTickets(row, col.ageProp, key)
                             )
-                            .reduce((a, b) => a.concat(b), [])
+                            .flat()
                             .join(", ") || "No tickets"
                         }
                       >
@@ -186,16 +194,8 @@ export default function AgentAgeTable({
                           style={{
                             fontWeight: 900,
                             fontSize: "12px",
-                            ушcolor: "Black",
-                            background: "none",
-                            borderRadius: "8px",
-                            padding: "5px 0",
-                            minWidth: "40px",
-                            minHeight: "10px",
-                            textAlign: "center",
-                            display: "inline-block",
+                            color: "black",
                           }}
-                          title="Total tickets in this age range"
                         >
                           {statusOrder.reduce(
                             (sum, key) =>
@@ -232,8 +232,9 @@ export default function AgentAgeTable({
                           >
                             <span
                               style={{
-                                background: "#15171a",
-                                color: "white",
+                                background:
+                                  STATUS_COLORS[statusKey],
+                                color: "black",
                                 borderRadius: "12px",
                                 fontWeight: 900,
                                 fontSize: "12px",
@@ -245,11 +246,6 @@ export default function AgentAgeTable({
                                 alignItems: "center",
                                 justifyContent: "center",
                               }}
-                              title={
-                                statusKey.charAt(0).toUpperCase() +
-                                statusKey.slice(1) +
-                                " tickets"
-                              }
                             >
                               {
                                 aggregateTickets(

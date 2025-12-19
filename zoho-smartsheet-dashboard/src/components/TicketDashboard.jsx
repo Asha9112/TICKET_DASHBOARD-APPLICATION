@@ -550,12 +550,11 @@ function TicketDashboard() {
   }, [selectedDepartments, currentDeptPage]);
   // NEW: load archived tickets when "archived" is selected
   // when user checks "Archived Tickets" checkbox in TABLES menu
-  useEffect(() => {
-    if (selectedAges.includes("archived")) {
-      // default: all departments
-      fetchArchivedTickets(null);
-    }
-  }, [selectedAges]);
+  // NEW: always load archived tickets on mount
+useEffect(() => {
+  fetchArchivedTickets(null); // all departments
+}, []);
+
   // Array of gorgeous blue gradient background colors for departments (can be customized)
   const departmentBgColors = [
     "linear-gradient(135deg, #132344ff 0%, #132344ff 50%, #0d172d 100%)", // Navy blue -> royal blue -> midnight blue
@@ -1488,22 +1487,21 @@ function TicketDashboard() {
 {selectedDepartments.length === 0 &&
 (selectedAges.length > 0 || departmentViewEnabled || showAgentPerformance) ? (
   <AgentTicketAgeTable
-    membersData={filteredMembers}
-    metricsRows={metricsRows}
-    selectedAges={selectedAges}
-    selectedStatuses={selectedStatuses}
-    onClose={() => setSelectedAges([])}
-    showTimeDropdown={showTimeDropdown}
-    selectedDepartmentId={currentDepartments[0]?.value}
-    selectedAgentNames={
-      currentDepartments ? selectedDeptAgents[currentDepartments[0]?.value] : []
-    }
-    departmentsMap={departmentsMap}
-    departmentViewEnabled={departmentViewEnabled}
-    setDepartmentViewEnabled={setDepartmentViewEnabled}
-    archivedRows={archivedRows}
-    showAgentPerformance={showAgentPerformance}  
-  />
+  membersData={filteredMembers}
+  metricsRows={metricsRows}
+  selectedAges={selectedAges}
+  selectedStatuses={selectedStatuses}
+  onClose={setSelectedAges}
+  showTimeDropdown={showTimeDropdown}
+  selectedDepartmentId={currentDepartments[0]?.value}
+  selectedAgentNames={currentDepartments ? selectedDeptAgents[currentDepartments[0]?.value] : []}
+  departmentsMap={departmentsMap}
+  departmentViewEnabled={departmentViewEnabled}
+  setDepartmentViewEnabled={setDepartmentViewEnabled}
+  archivedRows={archivedRows}          // always passed
+  showAgentPerformance={showAgentPerformance}
+/>
+
 ) : (
   departmentGrids
 )}
