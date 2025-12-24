@@ -1,6 +1,3 @@
-const registerAgentPerformanceRoutes = require("./Application/agentPerformanceRoutes");
-
-
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
@@ -13,7 +10,6 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-
 app.use((req, res, next) => {
   res.setHeader(
     "Content-Security-Policy",
@@ -25,7 +21,51 @@ app.use((req, res, next) => {
 // ===== RAM store for archived tickets =====
 const archivedCache = Object.create(null);
 
+// =====================
+// Helpers shared
+// =====================
 
+// Parse Zoho duration strings like: "20 days 04:40 hrs", "04:40 hrs", "5 hrs"
+function parseZohoDurationToHours(str) {
+  if (!str || typeof str !== "string") return 0;
+
+  const s = str.trim().toLowerCase();
+
+  // "20 days 04:40 hrs"
+  let m = s.match(/(\d+)\s*days?\s+(\d{1,2}):(\d{2})\s*hrs?/);
+  if (m) {
+    const days = +m[1] || 0;
+    const hours = +m[2] || 0;
+    const minutes = +m[3] || 0;
+    return days * 24 + hours + minutes / 60;
+  }
+
+  // "04:40 hrs"
+  m = s.match(/(\d{1,2}):(\d{2})\s*hrs?/);
+  if (m) {
+    return (+m[1] || 0) + (+m[2] || 0) / 60;
+  }
+
+  // "5 hrs" or "5"
+  m = s.match(/(\d+(\.\d+)?)/);
+  return m ? parseFloat(m[1]) || 0 : 0;
+}
+
+const RESOLVED_STATUSES = new Set([
+  "resolved",
+  "closed",
+  "archived",
+  "completed",
+]);
+
+const formatHoursToText = (hrs) => {
+  if (!hrs || hrs <= 0) return "0:00";
+  const h = Math.floor(hrs);
+  const m = Math.round((hrs % 1) * 60)
+    .toString()
+    .padStart(2, "0");
+  return `${h}:${m}`;
+};
 
 const clientId = "1000.VEPAX9T8TKDWJZZD95XT6NN52PRPQY";
 const clientSecret = "acca291b89430180ced19660cd28ad8ce1e4bec6e8";
@@ -209,7 +249,7 @@ function diffInHours(start, end) {
 }
 
 /**
- * NEW: add a Zoho-style "H:MM hrs" duration to a start datetime,
+ * add a Zoho-style "H:MM hrs" duration to a start datetime,
  * and return the resulting Date in ISO string.
  */
 function addZohoDurationToDate(startDateString, zohoHrsString) {
@@ -230,7 +270,7 @@ function addZohoDurationToDate(startDateString, zohoHrsString) {
   return end.toISOString();
 }
 
-// NEW helper: fetch all archived tickets for a department (paginated, capped by Zoho)
+// fetch all archived tickets for a department
 async function fetchAllArchivedTickets(accessToken, departmentId) {
   const limit = 100;
   let from = 0;
@@ -256,9 +296,8 @@ async function fetchAllArchivedTickets(accessToken, departmentId) {
 let cachedActiveTickets = [];
 let agentIdToName = {};
 
-// cache for archived tickets per department (in RAM)
 const ARCHIVED_TTL_MS = 5 * 60 * 1000; // 5 minutes
-// let archivedCache = {}; // { [departmentId_agent]: { ts, rows } }
+
 async function fetchTicketMetricsForTickets(accessToken, tickets) {
   const MAX_METRICS_TICKETS = 300;
 
@@ -295,13 +334,12 @@ async function fetchTicketMetricsForTickets(accessToken, tickets) {
           ticket.assignee.name ||
           ticket.assignee.email)) ||
       ticket.assigneeName ||
-      "Unassigned"; // fallback so metrics views never show blank agent
+      "Unassigned";
 
     const dept = departmentList.find((d) => d.id === ticket.departmentId);
     const departmentId = ticket.departmentId || "";
     const departmentName = dept ? dept.name : "";
 
-    // NEW: compute firstResponseDateTime from createdTime + firstResponseTime
     const firstResponseDateTime = addZohoDurationToDate(
       ticket.createdTime,
       metrics.firstResponseTime
@@ -317,7 +355,6 @@ async function fetchTicketMetricsForTickets(accessToken, tickets) {
       totalResponseTime: metrics.totalResponseTime || "",
       resolutionTime: metrics.resolutionTime || "",
 
-      // NEW field
       firstResponseDateTime: firstResponseDateTime || "",
 
       departmentId,
@@ -358,14 +395,284 @@ let metricsCachePayload = null;
 let metricsCacheTime = 0;
 let metricsInFlightPromise = null;
 
-registerAgentPerformanceRoutes(app, {
-  getAccessToken,
-  fetchAllTickets,
-  fetchAllArchivedTickets,
-  fetchTicketMetricsForTickets,
-  departmentList,
+// =====================
+// 1) AGENT PERFORMANCE
+// =====================
+app.get("/api/agent-performance", async (req, res) => {
+  try {
+    const { fromDate, toDate, departmentId, agentId } = req.query;
+
+    const fromDateObj = fromDate ? new Date(fromDate) : null;
+    const toDateObj = toDate ? new Date(toDate) : null;
+
+    const accessToken = await getAccessToken();
+
+    // Active tickets
+    const deptIds =
+      departmentId && departmentId !== "all" ? [departmentId] : [];
+
+    const activeTickets = await fetchAllTickets(
+      accessToken,
+      deptIds,
+      agentId || null
+    );
+
+    // Archived tickets
+    let archivedTickets = [];
+    const deps =
+      departmentId && departmentId !== "all"
+        ? departmentList.filter((d) => d.id === departmentId)
+        : departmentList;
+
+    for (const dep of deps) {
+      const batch = await fetchAllArchivedTickets(accessToken, dep.id);
+      archivedTickets.push(...(batch || []));
+    }
+
+    // Merge active + archived
+    let allTickets = [...activeTickets, ...archivedTickets];
+
+    // Filter by agentId
+    if (agentId && agentId !== "all") {
+      allTickets = allTickets.filter(
+        (t) => String(t.assigneeId || "") === String(agentId)
+      );
+    }
+
+    // Filter by date range (created or closed within range)
+    if (fromDateObj || toDateObj) {
+      allTickets = allTickets.filter((t) => {
+        const created = t.createdTime && new Date(t.createdTime);
+        const closed = t.closedTime && new Date(t.closedTime);
+
+        const inCreated =
+          created &&
+          (!fromDateObj || created >= fromDateObj) &&
+          (!toDateObj || created <= toDateObj);
+
+        const inClosed =
+          closed &&
+          (!fromDateObj || closed >= fromDateObj) &&
+          (!toDateObj || closed <= toDateObj);
+
+        return inCreated || inClosed;
+      });
+    }
+
+    if (!allTickets.length) {
+      return res.json({ agents: [], summary: null });
+    }
+
+    // -------- 1) Build status + agent-name maps from allTickets --------
+    const statusMapLocal = {};
+    const baseAgentsMap = {}; // every agent who has any ticket in allTickets
+
+    allTickets.forEach((t) => {
+      const key = String(t.ticketNumber || t.id || "");
+      if (key) statusMapLocal[key] = (t.status || "").toLowerCase();
+
+      const agentKey = String(t.assigneeId || "unassigned");
+
+      if (!baseAgentsMap[agentKey]) {
+        const assignee = t.assignee || {};
+        const nameFromTicket =
+          assignee.displayName ||
+          assignee.fullName ||
+          assignee.name ||
+          assignee.email ||
+          t.assigneeName ||
+          "Unassigned";
+
+        baseAgentsMap[agentKey] = {
+          agentId: agentKey,
+          agentName: nameFromTicket,
+          ticketIds: new Set(),
+          resolvedIds: new Set(),
+          pendingIds: new Set(),
+          totalResolutionHours: 0,
+          resolutionCount: 0, // will be filled when metrics exist
+        };
+      }
+
+      const bucket = baseAgentsMap[agentKey];
+      const ticketId = String(t.ticketNumber || t.id || "");
+      if (!ticketId) return;
+      bucket.ticketIds.add(ticketId);
+
+      const status = statusMapLocal[ticketId] || "";
+      if (RESOLVED_STATUSES.has(status)) {
+        bucket.resolvedIds.add(ticketId);
+      } else {
+        bucket.pendingIds.add(ticketId);
+      }
+    });
+
+    // -------- 2) Fetch metrics and overlay resolution averages --------
+    const metricRows = await fetchTicketMetricsForTickets(
+      accessToken,
+      allTickets
+    );
+
+    metricRows.forEach((row) => {
+      const agentKey = String(row.agentId || row.assigneeId || "unassigned");
+      const ticketId = String(row.ticketNumber || row.id || "");
+      if (!ticketId) return;
+
+      // ensure agent exists in base map
+      if (!baseAgentsMap[agentKey]) {
+        baseAgentsMap[agentKey] = {
+          agentId: agentKey,
+          agentName: row.agentName || "Unassigned",
+          ticketIds: new Set(),
+          resolvedIds: new Set(),
+          pendingIds: new Set(),
+          totalResolutionHours: 0,
+          resolutionCount: 0,
+        };
+      }
+
+      const bucket = baseAgentsMap[agentKey];
+
+      const status = statusMapLocal[ticketId] || "";
+      if (RESOLVED_STATUSES.has(status)) {
+        const resHrs = parseZohoDurationToHours(row.resolutionTime);
+        if (resHrs >= 0) {
+          bucket.totalResolutionHours += resHrs;
+          bucket.resolutionCount++;
+        }
+      }
+    });
+
+    // -------- 3) Build final agents array --------
+    const agents = Object.values(baseAgentsMap).map((a) => {
+      const avgRes =
+        a.resolutionCount > 0
+          ? a.totalResolutionHours / a.resolutionCount
+          : 0;
+
+      return {
+        agentId: a.agentId,
+        agentName: a.agentName,
+        ticketsCreated: a.ticketIds.size,
+        ticketsResolved: a.resolvedIds.size,
+        pendingCount: a.pendingIds.size,
+        avgResolutionHours: avgRes,
+        avgResolutionText: formatHoursToText(avgRes),
+      };
+    });
+
+    // -------- 4) Global totals for summary cards --------
+    let totalResolved = 0;
+    let totalPending = 0;
+    let totalResolutionHours = 0;
+
+    agents.forEach((a) => {
+      const resolved = Number(a.ticketsResolved) || 0;
+      const pending = Number(a.pendingCount) || 0;
+      const resHrs =
+        typeof a.avgResolutionHours === "number"
+          ? a.avgResolutionHours
+          : 0;
+
+      totalResolved += resolved;
+      totalPending += pending;
+      totalResolutionHours += resHrs * resolved;
+    });
+
+    const totalCreated = totalResolved + totalPending;
+    const avgResolutionHours =
+      totalResolved > 0
+        ? +(totalResolutionHours / totalResolved).toFixed(2)
+        : 0;
+
+    res.json({
+      agents,
+      summary: {
+        totalCreated,
+        totalResolved,
+        totalPending,
+        avgResolutionHours,
+      },
+    });
+  } catch (err) {
+    console.error("Error in /api/agent-performance", err);
+    res.status(500).json({ error: "Failed to compute agent performance" });
+  }
 });
 
+
+
+// =====================
+// 2) YEAR-WISE SUMMARY
+// =====================
+app.get("/api/tickets-yearly-summary", async (req, res) => {
+  try {
+    const { departmentId, agentId } = req.query;
+    const accessToken = await getAccessToken();
+
+    const deptIds =
+      departmentId && departmentId !== "all" ? [departmentId] : [];
+
+    const activeTickets = await fetchAllTickets(
+      accessToken,
+      deptIds,
+      agentId && agentId !== "all" ? agentId : null
+    );
+
+    let archivedTickets = [];
+    const deps =
+      departmentId && departmentId !== "all"
+        ? departmentList.filter((d) => d.id === departmentId)
+        : departmentList;
+
+    for (const dep of deps) {
+      const batch = await fetchAllArchivedTickets(accessToken, dep.id);
+      archivedTickets.push(...(batch || []));
+    }
+
+    if (agentId && agentId !== "all") {
+      archivedTickets = archivedTickets.filter(
+        (t) => String(t.assigneeId || "") === String(agentId)
+      );
+    }
+
+    const allTickets = [...activeTickets, ...archivedTickets];
+
+    const summary = {};
+    for (let y = 2020; y <= 2025; y++) {
+      summary[y] = { created: 0, resolved: 0 };
+    }
+
+    allTickets.forEach((t) => {
+      const d = t.createdTime && new Date(t.createdTime);
+      if (!d || Number.isNaN(d.getTime())) return;
+
+      const y = d.getFullYear();
+      if (!summary[y]) return;
+
+      summary[y].created += 1;
+
+      if (RESOLVED_STATUSES.has((t.status || "").toLowerCase())) {
+        summary[y].resolved += 1;
+      }
+    });
+
+    res.json({
+      years: Object.keys(summary).map((y) => ({
+        year: y,
+        created: summary[y].created,
+        resolved: summary[y].resolved,
+      })),
+    });
+  } catch (err) {
+    console.error("Error in /api/tickets-yearly-summary", err);
+    res.status(500).json({ error: "Failed to compute yearly summary" });
+  }
+});
+
+// ================================
+// EXISTING ROUTES (unchanged)
+// ================================
 
 app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
   try {
@@ -445,7 +752,6 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
         users = users.concat(missingUsers.filter(Boolean));
       }
 
-      // build global id -> name map used by metrics + archived endpoints
       agentIdToName = {};
       users.forEach((u) => {
         const name =
@@ -913,6 +1219,7 @@ app.get("/api/zoho-assignees-with-ticket-counts", async (req, res) => {
       .json({ error: "Failed to fetch assignee ticket counts" });
   }
 });
+
 app.get("/api/zoho-departments", async (req, res) => {
   try {
     const nowTs = Date.now();
@@ -1091,6 +1398,7 @@ app.get("/api/department-members/:departmentId", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch department members" });
   }
 });
+
 app.get("/api/ticket-metrics-simple", async (req, res) => {
   try {
     const nowTs = Date.now();
@@ -1124,15 +1432,15 @@ app.get("/api/ticket-metrics-simple", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch ticket metrics" });
   }
 });
+
 // archived + active closed tickets endpoint
-// supports optional departmentId & agentId
 app.get("/api/archived-tickets", async (req, res) => {
   try {
     const { departmentId, agentId } = req.query;
     const cacheKey = `${departmentId || "all"}_${agentId || "all"}`;
     const now = Date.now();
 
-    // ---------------- CACHE ----------------
+    // ---------- CACHE ----------
     const cached = archivedCache[cacheKey];
     if (cached && now - cached.ts < ARCHIVED_TTL_MS) {
       return res.json({
@@ -1141,19 +1449,15 @@ app.get("/api/archived-tickets", async (req, res) => {
       });
     }
 
-    // ---------------- AUTH ----------------
+    // ---------- AUTH ----------
     const accessToken = await getAccessToken();
 
-    // ---------------- 1. FETCH ARCHIVED ----------------
+    // ---------- 1. FETCH ARCHIVED ----------
     let archivedTickets = [];
 
     if (departmentId) {
-      archivedTickets = await fetchAllArchivedTickets(
-        accessToken,
-        departmentId
-      );
+      archivedTickets = await fetchAllArchivedTickets(accessToken, departmentId);
     } else {
-      // fetch all departments in parallel
       const archivedBatches = await Promise.all(
         departmentList.map((dep) =>
           fetchAllArchivedTickets(accessToken, dep.id)
@@ -1162,7 +1466,7 @@ app.get("/api/archived-tickets", async (req, res) => {
       archivedTickets = archivedBatches.flat();
     }
 
-    // agent filter on archived tickets
+    // optional agent filter
     if (agentId) {
       archivedTickets = archivedTickets.filter(
         (t) => String(t.assigneeId) === String(agentId)
@@ -1174,7 +1478,7 @@ app.get("/api/archived-tickets", async (req, res) => {
       (t) => (t.status || "").toLowerCase() === "closed"
     );
 
-    // ---------------- 2. FETCH ACTIVE (CLOSED ONLY) ----------------
+    // ---------- 2. FETCH ACTIVE (CLOSED ONLY) ----------
     const activeTickets = await fetchAllTickets(
       accessToken,
       departmentId ? [departmentId] : [],
@@ -1185,7 +1489,7 @@ app.get("/api/archived-tickets", async (req, res) => {
       (t) => (t.status || "").toLowerCase() === "closed"
     );
 
-    // ---------------- 3. NORMALIZE DATA ----------------
+    // ---------- 3. NORMALIZE DATA ----------
     function mapTicket(ticket, source) {
       const dept = departmentList.find(
         (d) => String(d.id) === String(ticket.departmentId)
@@ -1223,7 +1527,8 @@ app.get("/api/archived-tickets", async (req, res) => {
           createdTime && closedTime
             ? diffInHours(createdTime, closedTime)
             : null,
-        source, // archived | activeClosed
+        source, // "archived" | "activeClosed"
+        // firstResponseTime will be added later from metrics
       };
     }
 
@@ -1235,8 +1540,7 @@ app.get("/api/archived-tickets", async (req, res) => {
       mapTicket(t, "activeClosed")
     );
 
-    // ---------------- 4. MERGE + DEDUPE ----------------
-     // ---------------- 4. MERGE + DEDUPE ----------------
+    // ---------- 4. MERGE + DEDUPE ----------
     const seen = new Set();
     let allRows = [...archivedRows, ...activeClosedRows].filter((row) => {
       if (seen.has(row.id)) return false;
@@ -1244,7 +1548,7 @@ app.get("/api/archived-tickets", async (req, res) => {
       return true;
     });
 
-    // 4b) ENRICH WITH METRICS FIRST RESPONSE TIME
+    // ---------- 4b. ENRICH WITH METRICS (FIRST RESPONSE TIME) ----------
     try {
       const metricsRows = await fetchTicketMetricsForTickets(
         accessToken,
@@ -1268,16 +1572,20 @@ app.get("/api/archived-tickets", async (req, res) => {
         e?.message
       );
       // continue without firstResponseTime if metrics fail
+      allRows = allRows.map((row) => ({
+        ...row,
+        firstResponseTime: "",
+      }));
     }
 
-    // sort by closed time (latest first)
+    // ---------- 5. SORT LATEST CLOSED FIRST ----------
     allRows.sort((a, b) => {
       const da = a.closedTime ? new Date(a.closedTime).getTime() : 0;
       const db = b.closedTime ? new Date(b.closedTime).getTime() : 0;
       return db - da;
     });
 
-    // ---------------- CACHE SAVE ----------------
+    // ---------- 6. CACHE ----------
     archivedCache[cacheKey] = {
       ts: now,
       rows: allRows,
@@ -1298,13 +1606,11 @@ app.get("/api/archived-tickets", async (req, res) => {
   }
 });
 
-
-// Default health check route (optional, keep if already present or needed)
+// Health check
 app.get("/", (req, res) => {
   res.send("Zoho Desk backend is running");
 });
 
-// Start server
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });

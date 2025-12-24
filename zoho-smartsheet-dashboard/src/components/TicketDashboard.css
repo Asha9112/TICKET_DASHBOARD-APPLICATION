@@ -48,8 +48,8 @@
 .legend-item {
   width: auto;               /* Fixed width matching select buttons */
   text-align: center;
-  padding: 4px 4px;
-  border-radius: 17px;
+  padding: 10px 4px;
+  border-radius: 10px;
   font-weight: bold;
     background: #0d0d13 !important; 
   box-shadow:

@@ -80,8 +80,8 @@ const archivedColumns = [
   { key: "closedTime", label: "Closed" },
   { key: "resolutionTimeHours", label: "Resolution Time (Hours)" },
 
-  // ✅ NEW COLUMN (THIS IS THE FIX)
-  { key: "firstResponseTime", label: "First Response Time" },
+  // // ✅ NEW COLUMN (THIS IS THE FIX)
+  // { key: "firstResponseTime", label: "First Response Time" },
 ];
 
 
@@ -970,6 +970,7 @@ const agentPerformanceRowsForDisplay = useMemo(() => {
   );
 }, [agentPerformanceRows, searchTerm]);
 
+
 const agentPerfTotalPages = Math.max(
   1,
   Math.ceil(agentPerformanceRowsForDisplay.length / agentPerfPageSize)
@@ -1188,11 +1189,12 @@ return (
 
     {/* -------- AGENT PERFORMANCE CHARTS (ONLY WHEN CHART VIEW) -------- */}
     {showAgentPerformanceTable && agentPerfView === "charts" && (
-      <AgentPerformanceCharts
-        rows={agentPerformanceRowsForDisplay}
-        archivedRows={filteredArchivedRows}
-      />
-    )}
+  <AgentPerformanceCharts
+    rows={agentPerformanceRows}          // use full list, NOT filtered by search
+    archivedRows={filteredArchivedRows}
+  />
+)}
+
 
     {/* -------- MAIN TABLE CONTAINER (HIDDEN WHEN CHART VIEW) -------- */}
     {!(showAgentPerformanceTable && agentPerfView === "charts") && (
