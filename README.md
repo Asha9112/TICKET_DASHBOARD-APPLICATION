@@ -50,20 +50,20 @@ backend/
 
 # Clone & Frontend
 git clone  https://github.com/Asha9112/TICKET_DASHBOARD-APPLICATION.git
-cd frontend
-npm install
-npm run dev          # http://localhost:5173
+- cd frontend
+- npm install
+- npm run dev          # http://localhost:5173
 
 # Backend (New Terminal)
-cd backend
-npm install
+- cd backend
+- npm install
 # Update .env with Zoho
-npm start           # http://localhost:5000
+- npm start           # http://localhost:5000
 
 **API Endpoints**
-GET /api/agent-performance      → Agent metrics + CSAT/SLA
-GET /api/tickets-yearly-summary → Yearly created vs resolved  
-GET /api/zoho-departments      → Department list
+- GET /api/agent-performance      → Agent metrics + CSAT/SLA
+- GET /api/tickets-yearly-summary → Yearly created vs resolved  
+- GET /api/zoho-departments      → Department list
 
 **Screenshots**
 <img width="1328" height="629" alt="image" src="https://github.com/user-attachments/assets/06969cf6-08bb-48d3-9d1c-b44548a8fb54" />
