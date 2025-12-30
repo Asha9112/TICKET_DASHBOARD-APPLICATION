@@ -49,7 +49,7 @@ backend/
 - Installation
 
 # Clone & Frontend
-git clone [YOUR-REPO-URL]
+git clone  https://github.com/Asha9112/TICKET_DASHBOARD-APPLICATION.git
 cd frontend
 npm install
 npm run dev          # http://localhost:5173
